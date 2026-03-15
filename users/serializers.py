@@ -59,8 +59,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        token['role'] = user.groups.values.list('name', flat=True).first() or 'Standard User'
+        token['role'] = user.groups.values_list('name', flat=True).first() or 'Standard User'
         token['mfa_enabled'] = user.is_mfa_enabled
+        token['mfa_pending'] = user.is_mfa_enabled
         return token
 
 class UserPublicSerializer(serializers.ModelSerializer):
@@ -76,3 +77,25 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'is_mfa_enabled', 'auth_provider',
         ]
         read_only_fields = fields
+
+
+class MFASetupSerializer(serializers.Serializer):
+    '''
+    Read-only response serializer for MFA setup.
+    Returns the raw TOTP secret and otpauth URI for QR code generation on the frontend.
+    No input fields — secret is generated server-side.
+    '''
+    secret = serializers.CharField(read_only=True)
+    otpauth_uri = serializers.CharField(read_only=True)
+
+class MFAVerifySerializer(serializers.Serializer):
+    '''
+    Accepts a 6-digit TOTP code from the frontend.
+    Validated against the user's stored mfa_secret via pyotp.TOTP().verify().
+    '''
+    totp_code = serializers.CharField(
+        required=True,
+        min_length=6,
+        max_length=6,
+        help_text="6-digit code from authenticator app."
+    )

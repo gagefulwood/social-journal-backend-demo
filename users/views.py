@@ -1,15 +1,18 @@
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+import pyotp
 
 from .serializers import (
     UserRegistrationSerializer,
     CustomTokenObtainPairSerializer,
     UserPublicSerializer,
+    MFASetupSerializer,
+    MFAVerifySerializer,
 )
 
 class RegisterView(generics.CreateAPIView):
@@ -82,3 +85,64 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+    
+
+class MFASetupView(APIView):
+    '''
+    GET /api/auth/mfa/setup/ - Generate and store a TOTP secret for the authenticated user.
+    Returns the raw secret and otpauth URI for QR code generation on the frontend.
+    Calling this endpoint again regenerates the secret, invalidating any previous setup.
+    Permission: IsAuthenticated
+    '''
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        secret = pyotp.random_base32()
+
+        otpauth_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=request.user.email,
+            issuer_name='Social Journal'
+        )
+
+        request.user.mfa_secret = secret
+        request.user.save(update_fields=['mfa_secret'])
+
+        serializer = MFASetupSerializer({'secret': secret, 'otpauth_uri': otpauth_uri})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class MFAVerifyView(APIView):
+    '''
+    POST /api/auth/mfa/verify/ - Verify a TOTP code against the user's stored mfa_secret.
+    On success: sets is_mfa_enabled=True on the user record.
+    On failure: returns 400 with descriptive error.
+    Permission: IsAuthenticated
+    '''
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = MFAVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        totp_code = serializer.validated_data['totp_code']
+        mfa_secret = request.user.mfa_secret
+
+        if not mfa_secret:
+            return Response(
+                {'detail': 'MFA setup has not been initiated. Call GET /api/auth/mfa/setup/ first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        totp = pyotp.TOTP(mfa_secret)
+        if not totp.verify(totp_code):
+            return Response(
+                {'detail': 'Invalid TOTP code. Please try again.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        request.user.is_mfa_enabled = True
+        request.user.save(update_fields=['is_mfa_enabled'])
+
+        return Response(
+            {'detail': 'MFA successfully enabled.'},
+            status=status.HTTP_200_OK
+        )

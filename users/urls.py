@@ -5,6 +5,8 @@ from .views import (
     CustomTokenObtainPairView,
     LogoutView,
     UserProfileView,
+    MFASetupView,
+    MFAVerifyView,
 )
 
 urlpatterns = [
@@ -12,5 +14,7 @@ urlpatterns = [
     path('token/', CustomTokenObtainPairView.as_view(), name='auth-token'),
     path('token/refresh/', TokenRefreshView.as_view(), name='auth-token-refresh'),
     path('logout/', LogoutView.as_view(), name='auth-logout'),
+    path('mfa/setup/', MFASetupView.as_view(), name='auth-mfa-setup'),
+    path('mfa/verify/', MFAVerifyView.as_view(), name='auth-mfa-verify'),
     path('me/', UserProfileView.as_view(), name='user-profile'),
 ]
