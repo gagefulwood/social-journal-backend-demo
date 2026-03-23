@@ -1,0 +1,248 @@
+### ============================================================
+### Social Journal Backend — API Test Suite
+### ============================================================
+### Usage: Open in VS Code with the REST Client extension
+### (Install: ritwickdey.rest-client)
+### Set @baseUrl and credentials in the Variables section below
+### ============================================================
+
+### ── Variables ────────────────────────────────────────────────
+@baseUrl = http://127.0.0.1:8000
+@email = demo@example.com
+@password = SecurePass1!
+@accessToken = REPLACE_WITH_LOCAL_TOKEN
+@refreshToken = REPLACE_WITH_LOCAL_TOKEN
+
+
+### ============================================================
+### 1. REGISTRATION
+### ============================================================
+
+### 1a. Register a new user (success)
+POST {{baseUrl}}/api/auth/register/
+Content-Type: application/json
+
+{
+    "email": "{{email}}",
+    "username": "demouser",
+    "first_name": "Demo",
+    "last_name": "User",
+    "password": "{{password}}",
+    "password_confirm": "{{password}}"
+}
+
+###
+
+### 1b. Register — weak password (expect 400)
+POST {{baseUrl}}/api/auth/register/
+Content-Type: application/json
+
+{
+    "email": "weak@example.com",
+    "username": "weakuser",
+    "first_name": "Weak",
+    "last_name": "User",
+    "password": "weak",
+    "password_confirm": "weak"
+}
+
+###
+
+### 1c. Register — mismatched passwords (expect 400)
+POST {{baseUrl}}/api/auth/register/
+Content-Type: application/json
+
+{
+    "email": "mismatch@example.com",
+    "username": "mismatchuser",
+    "first_name": "Mismatch",
+    "last_name": "User",
+    "password": "SecurePass1!",
+    "password_confirm": "WrongPass1!"
+}
+
+###
+
+
+### ============================================================
+### 2. LOGIN
+### ============================================================
+
+### 2a. Login — valid credentials (copy access + refresh tokens into Variables above)
+POST {{baseUrl}}/api/auth/token/
+Content-Type: application/json
+
+{
+    "email": "{{email}}",
+    "password": "{{password}}"
+}
+
+###
+
+### 2b. Login — invalid credentials (expect 401)
+POST {{baseUrl}}/api/auth/token/
+Content-Type: application/json
+
+{
+    "email": "{{email}}",
+    "password": "wrongpassword"
+}
+
+###
+
+
+### ============================================================
+### 3. TOKEN REFRESH
+### ============================================================
+
+### 3a. Refresh access token (paste refresh token into @refreshToken above)
+POST {{baseUrl}}/api/auth/token/refresh/
+Content-Type: application/json
+
+{
+    "refresh": "{{refreshToken}}"
+}
+
+###
+
+
+### ============================================================
+### 4. USER PROFILE
+### ============================================================
+
+### 4a. Get current user profile
+GET {{baseUrl}}/api/users/me/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 4b. Update current user profile
+PATCH {{baseUrl}}/api/users/me/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "first_name": "Updated",
+    "last_name": "Name"
+}
+
+###
+
+### 4c. Get profile — no token (expect 401)
+GET {{baseUrl}}/api/users/me/
+
+###
+
+
+### ============================================================
+### 5. MFA SETUP
+### ============================================================
+
+### 5a. Generate MFA secret and otpauth URI
+### Copy the otpauth_uri into mfa_test.html to render the QR code
+GET {{baseUrl}}/api/auth/mfa/setup/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 5b. MFA setup — no token (expect 401)
+GET {{baseUrl}}/api/auth/mfa/setup/
+
+###
+
+
+### ============================================================
+### 6. MFA VERIFY
+### ============================================================
+
+### 6a. Verify TOTP code (replace 000000 with code from authenticator app)
+POST {{baseUrl}}/api/auth/mfa/verify/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "totp_code": "481363"
+}
+
+###
+
+### 6b. Verify — invalid code (expect 400)
+POST {{baseUrl}}/api/auth/mfa/verify/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "totp_code": "000000"
+}
+
+###
+
+### 6c. Verify — no token (expect 401)
+POST {{baseUrl}}/api/auth/mfa/verify/
+Content-Type: application/json
+
+{
+    "totp_code": "000000"
+}
+
+###
+
+### 6d. Verify — code too short (expect 400)
+POST {{baseUrl}}/api/auth/mfa/verify/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "totp_code": "123"
+}
+
+###
+
+
+### ============================================================
+### 7. LOGOUT
+### ============================================================
+
+### 7a. Logout — blacklists the refresh token (expect 205)
+POST {{baseUrl}}/api/auth/logout/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "refresh": "{{refreshToken}}"
+}
+
+###
+
+### 7b. Logout — attempt to use blacklisted refresh token (expect 401)
+### Run this immediately after 7a to confirm blacklisting worked
+POST {{baseUrl}}/api/auth/token/refresh/
+Content-Type: application/json
+
+{
+    "refresh": "{{refreshToken}}"
+}
+
+###
+
+### 7c. Logout — missing refresh token in body (expect 400)
+POST {{baseUrl}}/api/auth/logout/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+###
+
+### 7d. Logout — no auth token (expect 401)
+POST {{baseUrl}}/api/auth/logout/
+Content-Type: application/json
+
+{
+    "refresh": "{{refreshToken}}"
+}
+
+###
+```
+
+---
