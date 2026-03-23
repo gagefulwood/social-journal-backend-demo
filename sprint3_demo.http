@@ -245,4 +245,93 @@ Content-Type: application/json
 ###
 ```
 
----
+### ============================================================
+### 8. CONTACTS
+### ============================================================
+
+### 8a. Create a contact
+POST {{baseUrl}}/api/contacts/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john@example.com",
+    "trust_score": 75
+}
+
+###
+
+### 8b. List all contacts
+GET {{baseUrl}}/api/contacts/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 8c. Search contacts by name
+GET {{baseUrl}}/api/contacts/?name=john
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 8d. Get single contact (replace 1 with real id)
+GET {{baseUrl}}/api/contacts/1/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 8e. Update a contact
+PATCH {{baseUrl}}/api/contacts/1/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "trust_score": 90
+}
+
+###
+
+### 8f. Add a personal detail
+POST {{baseUrl}}/api/contacts/1/details/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "detail_value": "Allergic to peanuts"
+}
+
+###
+
+### 8g. List personal details
+GET {{baseUrl}}/api/contacts/1/details/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 8h. Add a loose note
+POST {{baseUrl}}/api/contacts/1/notes/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "body": "Met at the coffee shop on Main St.",
+    "is_active": true
+}
+
+###
+
+### 8i. List loose notes
+GET {{baseUrl}}/api/contacts/1/notes/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 8j. Delete a contact
+DELETE {{baseUrl}}/api/contacts/1/
+Authorization: Bearer {{accessToken}}
+
+###
+
+### 8k. Access contact without token (expect 401)
+GET {{baseUrl}}/api/contacts/
