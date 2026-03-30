@@ -5,6 +5,12 @@ from lookups.models import ContextCategory
 from django.utils import timezone
 
 class EventManager(models.Manager):
+    '''
+    Custom django manager for Event model.
+    upcoming() returns next 5 events after current time (ascending)
+    recent() returns last 5 events to current time (descending)
+    Both functions restricted to current user
+    '''
     def upcoming(self, user):
         return (
             self.get_queryset()
@@ -19,8 +25,13 @@ class EventManager(models.Manager):
                 .order_by('-event_timestamp')[:5]
         )
 
-# Create your models here.
 class Event(models.Model):
+    '''
+    Event model representing logged social event journals.
+    context_category links with ContextCategory lookup (social, pofessional, family)
+    Participants are linked with EventParticipant junction model
+    Journal entries are linkedvia OneToOne FK to the JournalEntry model
+    '''
     user_id = models.ForeignKey(
         Users,
         on_delete = models.CASCADE,
@@ -28,7 +39,7 @@ class Event(models.Model):
     ) 
     title = models.CharField(max_length=255)
     event_timestamp = models.DateTimeField()
-    context_category_id = models.ForeignKey(
+    context_category = models.ForeignKey(
         ContextCategory,
         null=True,
         blank=True,
@@ -38,14 +49,20 @@ class Event(models.Model):
     objects = EventManager()
 
     class Meta:
-        db_table = "events"
-        ordering = ["-events_timestamp"]
+        db_table = 'events'
+        ordering = ['-event_timestamp']
     
     def __str__(self):
         return f'{self.title} ({self.event_timestamp: %Y-%m-%d})'
 
 
 class EventParticipant(models.Model):
+    '''
+    Junction model links Events to Contacts
+    Allows multiple contacts to be tagged to a single event.
+    Deleting either (event or contact) cascades and deletes junction row.
+    RecalculateClosenessSignal runs on post_save for this model to update closeness of linked contact
+    '''
     event = models.ForeignKey(
         Event, 
         on_delete=models.CASCADE,
