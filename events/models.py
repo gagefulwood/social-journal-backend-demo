@@ -6,16 +6,18 @@ from django.utils import timezone
 
 class EventManager(models.Manager):
     def upcoming(self, user):
-        return self.filter(
-            user=user,
-            event_timestamp__gt=timezone.now()
-        ).order_by('event_timestamp')[:5]
+        return (
+            self.get_queryset()
+            .filter(user=user, event_timestamp__gt=timezone.now())   
+            .order_by('event_timestamp')[:5]
+        )
 
     def recent(self, user):
-        return self.filter(
-            user=user,
-            event_timestamp__lte=timezone.now()
-        ).order_by('-event_timestamp')[:5]
+        return (
+            self.get_queryset()
+                .filter(user=user, event_timestamp__lte=timezone.now())
+                .order_by('-event_timestamp')[:5]
+        )
 
 # Create your models here.
 class Event(models.Model):
@@ -35,6 +37,29 @@ class Event(models.Model):
     )
     objects = EventManager()
 
+    class Meta:
+        db_table = "events"
+        ordering = ["-events_timestamp"]
+    
+    def __str__(self):
+        return f'{self.title} ({self.event_timestamp: %Y-%m-%d})'
+
+
 class EventParticipant(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE)
-    contact = models.ForeignKey(Contact, on_delete=models.CASCADE)
+    event = models.ForeignKey(
+        Event, 
+        on_delete=models.CASCADE,
+        related_name = "participants",
+    )
+    contact = models.ForeignKey(
+        Contact, 
+        on_delete=models.CASCADE,
+        related_name = "events_participants",
+    )
+
+    class Meta:
+        db_table = "participants"
+        unique_together = ['event', 'contact'] 
+
+    def __str__(self):
+        return f'{self.contact} @ {self.event}'
