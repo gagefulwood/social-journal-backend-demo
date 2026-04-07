@@ -2,64 +2,76 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from django.db.models import Max
 from datetime import timedelta
 
 from events.models import Event
 from contacts.models import Contact
-from contacts.serializers import ContactListSerializer
-from .serializers import DashboardSerializer, ActivityStatsSerializer, DecayContactSerializer
+from .serializers import DashboardSerializer
 
 # Create your views here.
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        upcoming_events = Event.objects.filter(date__gte=timezone.now()).order_by('date')[:5]
-        recent_events = Event.objects.filter(date__lte=timezone.now()).order_by('-date')[:5]
-        
-        activity_stats = self.get_activity_stats()
-        decay_radar = self.get_decay_radar()
+    def get(self, request, *args, **kwargs):
+        user = request.user
 
-        dashboard_data = {
+        upcoming_events = Event.objects.upcoming(user)[:5]
+        recent_events = Event.objects.recent(user)[:5]
+        
+        activity_stats = self._get_activity_stats(user)
+        decay_radar = self._get_decay_radar(user)
+
+        payload = {
             "upcoming_events": upcoming_events,
             "recent_events": recent_events,
             "activity_stats": activity_stats,
             "decay_radar": decay_radar,
         }
 
-        serializer = DashboardSerializer(dashboard_data)
+        serializer = DashboardSerializer(payload)
         return Response(serializer.data)
 
-    def get_activity_stats(self):
-        today = timezone.now()
-        last_days = today - timedelta(days=30)
-        prev_days = today - timedelta(days=60)
+    def _get_activity_stats(self, user):
+        now = timezone.now()
+        thirty_days_ago = now - timedelta(days=30)
+        sixty_days_ago = now - timedelta(days=60)
 
-        recent_count = Event.objects.filter(date__gte=last_days).count()
-        prev_count = Event.objects.filter(date__gte=prev_days, date__lt=last_days).count()
+        current_count = Event.objects.filter(
+            user=user, event_timestamp__gte=thirty_days_ago, event_timestamp__lte=now
+        ).count()
 
-        trend_percent = 0
-        if prev_count != 0:
-            trend_percent = ((recent_count - prev_count) / prev_count) * 100
+        previous_count = Event.objects.filter(
+            user=user, event_timestamp__gte=sixty_days_ago, event_timestamp__lt=thirty_days_ago
+        ).count()
+
+        if previous_count == 0:
+            trend_percent = 100.0 if current_count > 0 else 0.0
+        else:
+            trend_percent = round(((current_count - previous_count) / previous_count) * 100, 1)
 
         return {
-            "total_this_month": recent_count,
-            "trend_percent": trend_percent,
+            "total_this_month": current_count,
+            "trend_percent": trend_percent
         }
 
-    def get_decay_radar(self):
-        cutoff = timezone.now() - timedelta(days=30)
-        contacts = Contact.objects.annotate(
-            last_event=Max('eventparticipant__event__date')
-        ).filter(last_event__lte=cutoff)
+    def _get_decay_radar(self, user):
+        now = timezone.now()
+        results = []
 
-        decay_list = []
-        for c in contacts:
-            days_since = (timezone.now() - c.last_event).days if c.last_event else None
-            decay_list.append({
-                "contact": c, 
-                "days_since_interaction": days_since,
-            })
-        
-        return sorted(decay_list, key=lambda x: x['days_since_interaction'] or 0, reverse=True)
+        contacts = Contact.objects.for_user(user).select_related('closeness_score')
+        for contact in contacts:
+            last_event_ts = contact.event_participations.select_related('event') \
+                .order_by('-event__event_timestamp') \
+                .values_list('event__event_timestamp', flat=True) \
+                .first()
+
+            days_since = 9999 if last_event_ts is None else (now - last_event_ts).days
+
+            if days_since >= 30:
+                results.append({
+                    "contact": contact,
+                    "days_since_interaction": days_since
+                })
+
+        results.sort(key=lambda x: x['days_since_interaction'], reverse=True)
+        return results
