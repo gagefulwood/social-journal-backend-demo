@@ -1,3 +1,75 @@
 from django.db import models
 
 # Create your models here.
+class JournalTag(models.Model):
+    """
+    User-defined or system-default tags that can be applied to journal entries.
+    Follows the same is_system_default pattern as other lookup models.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="journal_tags",
+    )
+    tag_name = models.CharField(max_length=100)
+    is_system_default = models.BooleanField(default=False)
+
+    objects = LookupManager()
+
+    class Meta:
+        db_table = "journal_tags"
+
+    def __str__(self):
+        return self.tag_name
+
+class JournalEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.OneToOneField(
+        "events.Event", 
+        on_delete=models.CASCADE, 
+        related_name="journal_entry",
+    )
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    mood = models.ForeignKey(
+        "lookups.Mood", 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+    )
+    entry_timestamp = models.DateTimeField(auto_now_add=True)
+    is_immutable = models.BooleanField(default=False)
+    tags = models.ManyToManyField(
+        JournalTag, 
+        blank=True, 
+        related_name="entries",
+    )
+
+    class Meta:
+        db_table = "journal_entries"
+        ordering = ["-entry_timestamp"]
+
+    def __str__(self):
+        return self.title
+
+class Reflection(models.Model):
+    id = models.UUIDField(
+        primary_key=True, 
+        default=uuid.uuid4, 
+        editable=False,
+    )
+    journal_entry models.ForeignKey(
+        JournalEntry, 
+        on_delete=models.CASCADE, 
+        related_name="reflections",
+    )
+    body models.TextField()
+    created_timestamp models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "reflections"
+        ordering = ["created_timestamp"]
+
+    def __str__(self):
+        return f"Reflection for {self.journal_entry.title[:20]}"
