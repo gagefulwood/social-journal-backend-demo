@@ -23,5 +23,6 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     path('api/', include('contacts.urls')),
     path('api/', include('events.urls')),
-    path("api/lookups/", include("lookups.urls")),
+    path('api/lookups/', include('lookups.urls')),
+    path('api/', include('dashboard.urls')),
 ]
