@@ -3,20 +3,22 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from datetime import timedelta
+from drf_spectacular.utils import extend_schema
 
 from events.models import Event
 from contacts.models import Contact
 from .serializers import DashboardSerializer
 
 # Create your views here.
+@extend_schema(responses=DashboardSerializer)
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         user = request.user
 
-        upcoming_events = Event.objects.upcoming(user)[:5]
-        recent_events = Event.objects.recent(user)[:5]
+        upcoming_events = Event.objects.upcoming(user)
+        recent_events = Event.objects.recent(user)
         
         activity_stats = self._get_activity_stats(user)
         decay_radar = self._get_decay_radar(user)

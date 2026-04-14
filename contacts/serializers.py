@@ -1,15 +1,7 @@
 from rest_framework import serializers
 from .models import Contact, ContactPersonalDetail, ContactLooseNote
-from lookups.models import ClosenessScore, Occupation, EducationLevel, NoteMarker
-
-class ClosenessScoreSerializer(serializers.ModelSerializer):
-    '''
-    read-only serializer for Closeness Score lookup
-    Nested inside ContactSerializer and ContactListSerializer
-    '''
-    class Meta:
-        model = ClosenessScore
-        fields = ['id', 'name']
+from lookups.models import Occupation, EducationLevel, NoteMarker
+from lookups.serializers import ClosenessScoreSerializer
 
 class ContactPersonalDetailSerializer(serializers.ModelSerializer):
     '''
@@ -63,9 +55,9 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = [
             'id', 'user', 'first_name', 'middle_name', 'last_name',
-            'email', 'phone_mumber', 'address', 'birthday', 'first_met_date',
+            'email', 'phone_number', 'address', 'birthday', 'first_met_date',
             'occupation', 'custom_occupation', 'company',
             'education_level', 'custom_education_level', 'school',
-            'trust_score', 'cloesness_score',
+            'trust_score', 'closeness_score',
         ]
         read_only_fields = ['user', 'closeness_score']

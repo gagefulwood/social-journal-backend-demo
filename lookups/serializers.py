@@ -5,7 +5,7 @@ from .models import (
     ClosenessScore,
     Mood,
     ContextCategory,
-    DetailCategory,
+    DetailCategoryTree,
     NoteMarker,
     MediaType,
     JournalTag,
@@ -43,7 +43,7 @@ class ContextCategorySerializer(serializers.ModelSerializer):
 
 class DetailCategorySerializer(serializers.ModelSerializer):
     class Meta:
-        model = DetailCategory
+        model = DetailCategoryTree
         fields = ["id", "name", "icon_reference", "parent"]
         read_only_fields = fields
 

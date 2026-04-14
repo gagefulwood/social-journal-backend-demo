@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from drf_spectacular.utils import extend_schema
 import pyotp
 
 from .serializers import (
@@ -43,6 +44,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     '''
     serializer_class = CustomTokenObtainPairSerializer
 
+@extend_schema(exclude=True)
 class LogoutView(generics.CreateAPIView):
     '''
     POST /api/auth/logout/ - Invalidate the current session.
@@ -86,7 +88,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
     
-
+@extend_schema(exclude=True)
 class MFASetupView(APIView):
     '''
     GET /api/auth/mfa/setup/ - Generate and store a TOTP secret for the authenticated user.
@@ -109,7 +111,8 @@ class MFASetupView(APIView):
 
         serializer = MFASetupSerializer({'secret': secret, 'otpauth_uri': otpauth_uri})
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
+@extend_schema(exclude=True)
 class MFAVerifyView(APIView):
     '''
     POST /api/auth/mfa/verify/ - Verify a TOTP code against the user's stored mfa_secret.

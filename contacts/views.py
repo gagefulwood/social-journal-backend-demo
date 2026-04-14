@@ -29,6 +29,8 @@ class ContactViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Contact.objects.none()
         return Contact.objects.for_user(self.request.user)
     
     def get_serializer_class(self):
@@ -51,14 +53,16 @@ class ContactPersonalDetailViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ContactPersonalDetail.objects.none()
         return ContactPersonalDetail.objects.filter(
             contact_id=self.kwargs['contact_pk'],
-            contact__user=self.request.user
+            contact__user=self.request.user,
         )
     
     def perform_create(self, serializer):
         contact = Contact.objects.get(
-            pk=self.kwargs['contacts_pk'],
+            pk=self.kwargs['contact_pk'],
             user=self.request.user
         )
         serializer.save(contact=contact)
@@ -75,6 +79,8 @@ class ContactLooseNoteViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ContactLooseNote.objects.none()
         return ContactLooseNote.objects.filter(
             contact_id=self.kwargs['contact_pk'],
             contact__user=self.request.user,

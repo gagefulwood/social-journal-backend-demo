@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import (
     Mood,
     ContextCategory,
-    DetailCategory,
+    DetailCategoryTree,
     NoteMarker,
     Occupation,
     EducationLevel,
@@ -37,6 +37,8 @@ class MoodViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Mood.objects.none()
         return Mood.objects.for_user(self.request.user)
 
 
@@ -47,6 +49,8 @@ class ContextCategoryViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ContextCategory.objects.none()
         return ContextCategory.objects.for_user(self.request.user)
 
 
@@ -57,7 +61,9 @@ class DetailCategoryViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
-        return DetailCategory.objects.for_user(self.request.user)
+        if getattr(self, 'swagger_fake_view', False):
+            return DetailCategoryTree.objects.none()
+        return DetailCategoryTree.objects.for_user(self.request.user)
 
 
 class NoteMarkerViewSet(ReadOnlyModelViewSet):
@@ -67,6 +73,8 @@ class NoteMarkerViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return NoteMarker.objects.none()
         return NoteMarker.objects.for_user(self.request.user)
 
 
@@ -77,6 +85,8 @@ class OccupationViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Occupation.objects.none()
         return Occupation.objects.for_user(self.request.user)
 
 
@@ -87,6 +97,8 @@ class EducationLevelViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return EducationLevel.objects.none()
         return EducationLevel.objects.for_user(self.request.user)
 
 
@@ -97,6 +109,8 @@ class ClosenessScoreViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ClosenessScore.objects.none()
         return ClosenessScore.objects.for_user(self.request.user)
 
 
@@ -107,6 +121,8 @@ class MediaTypeViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return MediaType.objects.none()
         return MediaType.objects.for_user(self.request.user)
 
 
@@ -117,4 +133,6 @@ class JournalTagViewSet(ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return JournalTag.objects.none()
         return JournalTag.objects.for_user(self.request.user)

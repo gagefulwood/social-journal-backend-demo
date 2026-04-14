@@ -1,30 +1,9 @@
 import uuid
 from django.conf import settings
 from django.db import models
+from lookups.models import JournalTag
 
 # Create your models here.
-class JournalTag(models.Model):
-    """
-    User-defined or system-default tags that can be applied to journal entries.
-    Follows the same is_system_default pattern as other lookup models.
-    """
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        null=True, 
-        blank=True,
-        related_name="journal_tags",
-    )
-    tag_name = models.CharField(max_length=100)
-    is_system_default = models.BooleanField(default=False)
-
-    objects = LookupManager()
-
-    class Meta:
-        db_table = "journal_tags"
-
-    def __str__(self):
-        return self.tag_name
 
 class JournalEntry(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

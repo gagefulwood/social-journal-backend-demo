@@ -1,11 +1,5 @@
 from django.contrib import admin
-from .models import JournalEntry, Reflection, JournalTag
-
-# Register your models here.
-@admin.register(JournalTag)
-class JournalTagAdmin(admin.ModelAdmin):
-    list_display = ("tag_name", "user", "is_system_default")
-    search_fields = ("tag_name",)
+from .models import JournalEntry, Reflection
 
 @admin.register(JournalEntry)
 class JournalEntryAdmin(admin.ModelAdmin):

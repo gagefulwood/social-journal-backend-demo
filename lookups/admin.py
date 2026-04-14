@@ -6,6 +6,7 @@ from .models import (
     Mood,
     ContextCategory,
     DetailCategoryTree,
+    JournalTag,
     NoteMarker,
     MediaType,
 )
@@ -49,6 +50,11 @@ class DetailCategoryTreeAdmin(admin.ModelAdmin):
     list_display  = ['name', 'parent', 'user', 'is_system_default']
     list_filter   = ['is_system_default']
     search_fields = ['name']
+
+@admin.register(JournalTag)
+class JournalTagAdmin(admin.ModelAdmin):
+    list_display = ("tag_name", "user", "is_system_default")
+    search_fields = ("tag_name",)
 
 
 @admin.register(NoteMarker)

@@ -24,7 +24,7 @@ class EventSerializer(serializers.ModelSerializer):
         source='participant_contacts',
         required=False,
     )
-    partipcants = EventParticipantSerializer(
+    participants = EventParticipantSerializer(
         many=True,
         read_only=True,
     )

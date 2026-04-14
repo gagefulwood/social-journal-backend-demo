@@ -160,6 +160,29 @@ class DetailCategoryTree(models.Model):
     def __str__(self):
         return self.name
     
+class JournalTag(models.Model):
+    """
+    User-defined or system-default tags that can be applied to journal entries.
+    Follows the same is_system_default pattern as other lookup models.
+    """
+    user = models.ForeignKey(
+        Users,
+        on_delete=models.CASCADE,
+        null=True, 
+        blank=True,
+        related_name="journal_tags",
+    )
+    tag_name = models.CharField(max_length=100)
+    is_system_default = models.BooleanField(default=False)
+
+    objects = LookupManager()
+
+    class Meta:
+        db_table = "journal_tags"
+
+    def __str__(self):
+        return self.tag_name
+    
 class NoteMarker(models.Model):
     '''
     Lookup table for contact loose note marker styles.

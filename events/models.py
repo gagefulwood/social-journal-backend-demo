@@ -32,7 +32,7 @@ class Event(models.Model):
     Participants are linked with EventParticipant junction model
     Journal entries are linkedvia OneToOne FK to the JournalEntry model
     '''
-    user_id = models.ForeignKey(
+    user = models.ForeignKey(
         Users,
         on_delete = models.CASCADE,
         related_name = 'events',
