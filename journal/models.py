@@ -1,3 +1,5 @@
+import uuid
+from django.conf import settings
 from django.db import models
 
 # Create your models here.
@@ -9,7 +11,8 @@ class JournalTag(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        null=True, blank=True,
+        null=True, 
+        blank=True,
         related_name="journal_tags",
     )
     tag_name = models.CharField(max_length=100)
@@ -59,13 +62,13 @@ class Reflection(models.Model):
         default=uuid.uuid4, 
         editable=False,
     )
-    journal_entry models.ForeignKey(
+    journal_entry = models.ForeignKey(
         JournalEntry, 
         on_delete=models.CASCADE, 
         related_name="reflections",
     )
-    body models.TextField()
-    created_timestamp models.DateTimeField(auto_now_add=True)
+    body = models.TextField()
+    created_timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "reflections"
