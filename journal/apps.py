@@ -6,4 +6,4 @@ class JournalConfig(AppConfig):
     name = 'journal'
 
     def ready(self):
-        pass
+        import journal.signals
