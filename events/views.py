@@ -25,7 +25,7 @@ class EventViewSet(
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Event.objects.none()
-        return Event.objects.for_user(self.request.user)
+        return Event.objects.filter(user=self.request.user)
     
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

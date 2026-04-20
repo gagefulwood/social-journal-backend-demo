@@ -11,12 +11,13 @@ class JournalEntryListSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'entry_timestamp', 'mood', 'tags']
 
 class JournalEntrySerializer(serializers.ModelSerializer):
+    event_id = serializers.UUIDField(write_only=True)
     mood = MoodSerializer(read_only=True)
     tags = JournalTagSerializer(many=True, read_only=True)
 
     class Meta:
         model = JournalEntry
-        fields = ['id', 'title', 'entry_timestamp', 'mood', 'tags', 'body', 'event','is_immutable']
+        fields = ['id', 'event_id', 'title', 'entry_timestamp', 'mood', 'tags', 'body', 'event','is_immutable']
         read_only_fields = ['event', 'is_immutable']
 
     def validate_body(self, value):

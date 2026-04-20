@@ -22,7 +22,7 @@ def recalculate_closeness(sender, instance, **kwargs):
     now = timezone.now()
 
     most_recent = (
-        instance.contact.event_participations
+        instance.contact.events_participants
             .select_related('event')
             .order_by('-event__event_timestamp')
             .values_list('event__event_timestamp', flat=True)
@@ -37,7 +37,7 @@ def recalculate_closeness(sender, instance, **kwargs):
         score_name = 'Low'
 
     try:
-        closeness_score = ClosenessScore.objects.get(name=score_name)
+        closeness_score = ClosenessScore.objects.filter(name=score_name).first()
         Contact.objects.filter(pk=contact.pk).update(
             closeness_score=closeness_score
         )

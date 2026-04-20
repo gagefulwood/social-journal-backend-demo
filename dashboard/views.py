@@ -62,7 +62,7 @@ class DashboardView(APIView):
 
         contacts = Contact.objects.for_user(user).select_related('closeness_score')
         for contact in contacts:
-            last_event_ts = contact.event_participations.select_related('event') \
+            last_event_ts = contact.events_participants.select_related('event') \
                 .order_by('-event__event_timestamp') \
                 .values_list('event__event_timestamp', flat=True) \
                 .first()

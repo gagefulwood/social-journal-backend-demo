@@ -8,5 +8,5 @@ def set_entry_immutable(sender, instance, created, **kwargs):
     This flag is checked by JournalEntrySerializer before allowing updates.
     Uses .update() instead of .save() to avoid a post_save loop.
     '''
-    if created and not instance.is_immmutable:
+    if created and not instance.is_immutable:
         instance.__class__.objects.filter(pk=instance.pk).update(is_immutable=True)
