@@ -6,10 +6,7 @@ from .models import Event
 from .serializers import EventSerializer
 from core.pagination import StandardResultsPagination
 
-class EventViewSet(
-    mixins.CreateModelMixin,
-    mixins.ListModelMixin,
-    viewsets.GenericViewSet):
+class EventViewSet(ModelViewSet):
     '''
     POST /api/events/ -> Create a new event with optional participant contact IDs
     GET /api/events/ -> List authenticated user's events ordered by timestamp descending
@@ -21,6 +18,15 @@ class EventViewSet(
     permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsPagination
     filter_backends = [DjangoFilterBackend]
+
+    http_method_names = [
+        "get",
+        "post",
+        "patch",
+        "delete",
+        "head",
+        "options",
+    ]
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
