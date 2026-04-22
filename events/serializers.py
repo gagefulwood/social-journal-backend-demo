@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Event, EventParticipant
 from contacts.models import Contact
 from contacts.serializers import ContactListSerializer
+from lookups.serializers import ContextCategorySerializer
 
 class EventParticipantSerializer(serializers.ModelSerializer):
     contact = ContactListSerializer(read_only=True)
@@ -44,3 +45,21 @@ class EventSerializer(serializers.ModelSerializer):
         for contact in participant_contacts:
             EventParticipant.objects.create(event=event, contact=contact)
         return event
+
+class EventListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer used on GET /api/events/ list view."""
+    context_category = ContextCategorySerializer(read_only=True)
+    participant_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Event
+        fields = [
+            "id",
+            "title",
+            "event_timestamp",
+            "context_category",
+            "participant_count",
+        ]
+
+    def get_participant_count(self, obj):
+        return obj.participants.count()
