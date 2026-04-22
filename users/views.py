@@ -145,7 +145,17 @@ class MFAVerifyView(APIView):
         request.user.is_mfa_enabled = True
         request.user.save(update_fields=['is_mfa_enabled'])
 
+        # Issue fresh tokens with mfa_pending=False so middleware allows on frontend
+        refresh = RefreshToken.for_user(request.user)
+        refresh['mfa_pending'] = False
+        refresh['mfa_enabled'] = True
+        try:
+            refresh['role'] = request.user.groups.first().name if request.user.groups.exists() else 'Standard User'
+        except Exception:
+            refresh['role'] = 'Standard User'
+        
         return Response(
-            {'detail': 'MFA successfully enabled.'},
-            status=status.HTTP_200_OK
-        )
+            {'detail': 'MFA successfully enabled.',
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            }, status=status.HTTP_200_OK)
