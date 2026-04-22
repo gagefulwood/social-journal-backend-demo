@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import viewsets
 from core.permissions import IsOwner
 from rest_framework.permissions import IsAuthenticated
@@ -31,19 +32,20 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         if getattr(self, 'swagger_fake_view', False):
             return JournalEntry.objects.none()
         return JournalEntry.objects.filter(
-            event__user=self.request.user
+            Q(event__user=self.request.user) | Q(event__isnull=True, user=self.request.user)
         ).select_related('mood', 'event')
 
     def perform_create(self, serializer):
+        event = None
         event_id = self.request.data.get('event_id')
-        try:
-            event = Event.objects.get(pk=event_id)
-        except Event.DoesNotExist:
-            raise ValidationError('event_id is invalid or does not exist.')
-        
-        if event.user != self.request.user:
-            raise PermissionDenied('You do not have permission to add a journal entry to this event.')
-        serializer.save(event=event)
+        if event_id:
+            try:
+                event = Event.objects.get(pk=event_id)
+            except Event.DoesNotExist:
+                raise ValidationError('event_id is invalid or does not exist.')
+            if event.user != self.request.user:
+                raise PermissionDenied('You do not have permission to add a journal entry to this event.')
+        serializer.save(event=event, user=self.request.user)
 
 class ReflectionViewSet(viewsets.ModelViewSet):
     '''

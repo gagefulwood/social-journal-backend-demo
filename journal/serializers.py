@@ -11,7 +11,7 @@ class JournalEntryListSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'entry_timestamp', 'mood', 'tags']
 
 class JournalEntrySerializer(serializers.ModelSerializer):
-    event_id = serializers.UUIDField(write_only=True)
+    event_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     mood = MoodSerializer(read_only=True)
     tags = JournalTagSerializer(many=True, read_only=True)
 
