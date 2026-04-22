@@ -1,9 +1,10 @@
-from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-import re
+from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Users
+import re
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     '''
@@ -53,13 +54,48 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     '''
     Extends SimpleJWT TokenObtainPairSerializer to inject custom claims into JWT payload.
-    Adds: role (user Group name), mfa_enabled (bool), mfa_pending (bool).
-    mfa_pending is read by Next.js middleware to redirect to /auth/mfa before granting session access.
+    Accepts either 'email' or 'username' as login identifier
+    Injects 'role' and 'mfa_enabled' claims into the JWT payload.
     '''
+    username_field = 'identifier'
+    identifier = serializers.CharField()
+
+    def validate(self, attrs):
+        identifier = attrs.get('identifier')
+        password = attrs.get('password')
+
+        user = authenticate(
+            request=self.context.get('request'),
+            username=identifier, # backend accepts email or username
+            password=password,
+        )
+
+        if not user:
+            raise serializers.ValidationError(
+                'No account found with these credentials.',
+                code='authorization',
+            )
+        if not user.is_active:
+            raise serializers.ValidationError(
+                'This account has been deactivated.',
+                code='authorization',
+            )
+        
+        # Generates the token pair manually because the default auth flow was bypassed
+        refresh = self.get_token(user)
+        data = {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+        }
+        return data
+    
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        token['role'] = user.groups.values_list('name', flat=True).first() or 'Standard User'
+        try:
+            token['role'] = user.groups.first().name if user.groups.exists() else 'Standard User'
+        except Exception:
+            token['role'] = 'Standard User'
         token['mfa_enabled'] = user.is_mfa_enabled
         token['mfa_pending'] = user.is_mfa_enabled
         return token
