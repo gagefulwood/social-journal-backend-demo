@@ -1,4 +1,4 @@
-from rest_framework.viewsets import ReadOnlyModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.permissions import IsAuthenticated
 
 from .models import (
@@ -25,8 +25,25 @@ from .serializers import (
     JournalTagSerializer,
 )
 
+class WritableLookupViewSet(ModelViewSet):
+    '''
+    Base ViewSet for lookup tables that support user-custom values.
+    GET returns system defaults + user-owned rows via LookupManager.for_user().
+    POST creates a new row owned by the requesting user.
+    No PATCH, PUT, or DELETE - lookup values are append-only.
+    '''
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    http_method_names = ['get', 'post', 'head', 'options']
 
-class MoodViewSet(ReadOnlyModelViewSet):
+    def perform_create(self, serializer):
+        '''
+        Always set user from request.user and is_system_default=False.
+        Users can never create system defaults through the API.
+        '''
+        serializer.save(user=self.request.user, is_system_default=False)
+
+class MoodViewSet(WritableLookupViewSet):
     """
     GET /api/lookups/moods/ - List available moods (system defaults + user-defined).
     Permission: IsAuthenticated
@@ -42,7 +59,7 @@ class MoodViewSet(ReadOnlyModelViewSet):
         return Mood.objects.for_user(self.request.user)
 
 
-class ContextCategoryViewSet(ReadOnlyModelViewSet):
+class ContextCategoryViewSet(WritableLookupViewSet):
     serializer_class = ContextCategorySerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -54,7 +71,7 @@ class ContextCategoryViewSet(ReadOnlyModelViewSet):
         return ContextCategory.objects.for_user(self.request.user)
 
 
-class DetailCategoryViewSet(ReadOnlyModelViewSet):
+class DetailCategoryViewSet(WritableLookupViewSet):
     serializer_class = DetailCategorySerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -66,7 +83,7 @@ class DetailCategoryViewSet(ReadOnlyModelViewSet):
         return DetailCategoryTree.objects.for_user(self.request.user)
 
 
-class NoteMarkerViewSet(ReadOnlyModelViewSet):
+class NoteMarkerViewSet(WritableLookupViewSet):
     serializer_class = NoteMarkerSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -78,7 +95,7 @@ class NoteMarkerViewSet(ReadOnlyModelViewSet):
         return NoteMarker.objects.for_user(self.request.user)
 
 
-class OccupationViewSet(ReadOnlyModelViewSet):
+class OccupationViewSet(WritableLookupViewSet):
     serializer_class = OccupationSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -90,7 +107,7 @@ class OccupationViewSet(ReadOnlyModelViewSet):
         return Occupation.objects.for_user(self.request.user)
 
 
-class EducationLevelViewSet(ReadOnlyModelViewSet):
+class EducationLevelViewSet(WritableLookupViewSet):
     serializer_class = EducationLevelSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -126,7 +143,7 @@ class MediaTypeViewSet(ReadOnlyModelViewSet):
         return MediaType.objects.for_user(self.request.user)
 
 
-class JournalTagViewSet(ReadOnlyModelViewSet):
+class JournalTagViewSet(WritableLookupViewSet):
     serializer_class = JournalTagSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
