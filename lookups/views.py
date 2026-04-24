@@ -1,5 +1,6 @@
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q
 
 from .models import (
     Mood,
@@ -80,7 +81,10 @@ class DetailCategoryViewSet(WritableLookupViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return DetailCategoryTree.objects.none()
-        return DetailCategoryTree.objects.for_user(self.request.user)
+        return DetailCategoryTree.objects.filter(
+            Q(is_system_default=True) | Q(user=self.request.user),
+            parent__isnull=True,
+        )
 
 
 class NoteMarkerViewSet(WritableLookupViewSet):
