@@ -1,12 +1,15 @@
+from datetime import timedelta
+
+from django.db.models import Max
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
-from datetime import timedelta
 from drf_spectacular.utils import extend_schema
 
-from events.models import Event
 from contacts.models import Contact
+from core.constants import RELATIONSHIP_TREND_DORMANT, RELATIONSHIP_TREND_FADING
+from events.models import Event
 from .serializers import DashboardSerializer
 
 # Create your views here.
@@ -60,20 +63,35 @@ class DashboardView(APIView):
         now = timezone.now()
         results = []
 
-        contacts = Contact.objects.for_user(user).select_related('closeness_score')
+        contacts = (
+            Contact.objects.for_user(user)
+            .filter(
+                relationship_trend__in=[
+                    RELATIONSHIP_TREND_FADING,
+                    RELATIONSHIP_TREND_DORMANT,
+                ],
+                events_participants__isnull=False,
+            )
+            .annotate(
+                last_interaction_date=Max('events_participants__event__event_timestamp')
+            )
+            .filter(last_interaction_date__isnull=False)
+            .order_by(
+                '-connection_strength',
+                'last_interaction_date',
+                'first_name',
+                'last_name',
+            )[:10]
+        )
         for contact in contacts:
-            last_event_ts = contact.events_participants.select_related('event') \
-                .order_by('-event__event_timestamp') \
-                .values_list('event__event_timestamp', flat=True) \
-                .first()
+            last_interaction_date = contact.last_interaction_date
+            results.append({
+                "contact_id": contact.id,
+                "name": str(contact),
+                "last_interaction_date": last_interaction_date,
+                "days_since": (now - last_interaction_date).days,
+                "relationship_trend": contact.relationship_trend,
+                "connection_strength": contact.connection_strength,
+            })
 
-            days_since = 9999 if last_event_ts is None else (now - last_event_ts).days
-
-            if days_since >= 30:
-                results.append({
-                    "contact": contact,
-                    "days_since_interaction": days_since
-                })
-
-        results.sort(key=lambda x: x['days_since_interaction'], reverse=True)
         return results

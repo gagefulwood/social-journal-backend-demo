@@ -9,7 +9,6 @@ from .models import (
     ObservationMarker,
     Occupation,
     EducationLevel,
-    ClosenessScore,
     MediaType,
     EntryTag,
 )
@@ -21,7 +20,6 @@ from .serializers import (
     ObservationMarkerSerializer,
     OccupationSerializer,
     EducationLevelSerializer,
-    ClosenessScoreSerializer,
     MediaTypeSerializer,
     EntryTagSerializer,
 )
@@ -121,18 +119,6 @@ class EducationLevelViewSet(WritableLookupViewSet):
         if getattr(self, 'swagger_fake_view', False):
             return EducationLevel.objects.none()
         return EducationLevel.objects.for_user(self.request.user)
-
-
-class ClosenessScoreViewSet(ReadOnlyModelViewSet):
-    serializer_class = ClosenessScoreSerializer
-    permission_classes = [IsAuthenticated]
-    pagination_class = None
-    http_method_names = ["get", "head", "options"]
-
-    def get_queryset(self):
-        if getattr(self, 'swagger_fake_view', False):
-            return ClosenessScore.objects.none()
-        return ClosenessScore.objects.for_user(self.request.user)
 
 
 class MediaTypeViewSet(ReadOnlyModelViewSet):

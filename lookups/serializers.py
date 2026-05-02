@@ -3,7 +3,6 @@ from django.db.models import Q
 from .models import (
     Occupation,
     EducationLevel,
-    ClosenessScore,
     Mood,
     ContextCategory,
     FactCategory,
@@ -23,12 +22,6 @@ class EducationLevelSerializer(serializers.ModelSerializer):
         model = EducationLevel
         fields = ["id", "name", "is_system_default"]
         read_only_fields = ['is_system_default']
-
-class ClosenessScoreSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ClosenessScore
-        fields = ["id", "name"]
-        read_only_fields = fields
 
 class MoodSerializer(serializers.ModelSerializer):
     class Meta:

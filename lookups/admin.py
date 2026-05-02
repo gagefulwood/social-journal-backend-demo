@@ -2,7 +2,6 @@ from django.contrib import admin
 from .models import (
     Occupation,
     EducationLevel,
-    ClosenessScore,
     Mood,
     ContextCategory,
     FactCategory,
@@ -24,11 +23,6 @@ class EducationLevelAdmin(admin.ModelAdmin):
     list_display  = ['name', 'user', 'is_system_default']
     list_filter   = ['is_system_default']
     search_fields = ['name']
-
-
-@admin.register(ClosenessScore)
-class ClosenessScoreAdmin(admin.ModelAdmin):
-    list_display = ['name', 'is_system_default']
 
 
 @admin.register(Mood)

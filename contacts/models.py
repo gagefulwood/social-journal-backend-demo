@@ -8,7 +8,6 @@ from users.models import Users
 from lookups.models import (
     Occupation,
     EducationLevel,
-    ClosenessScore,
     FactCategory,
     ObservationMarker,
 )
@@ -70,13 +69,6 @@ class Contact(models.Model):
     custom_education_level = models.CharField(max_length=255, blank=True)
     school = models.CharField(max_length=255, blank=True)
 
-    closeness_score = models.ForeignKey(
-        ClosenessScore,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='contacts'
-    )
     interaction_frequency_score = models.IntegerField(default=0)
     relationship_trend = models.CharField(
         max_length=20,

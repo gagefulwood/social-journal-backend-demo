@@ -23,7 +23,7 @@ class ContactAdmin(admin.ModelAdmin):
         'connection_strength',
     ]
     search_fields = ['first_name', 'last_name', 'email']
-    list_filter = ['relationship_trend', 'closeness_score']
+    list_filter = ['relationship_trend']
     readonly_fields = [
         'interaction_frequency_score',
         'relationship_trend',

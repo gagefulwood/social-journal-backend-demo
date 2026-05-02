@@ -62,21 +62,6 @@ class EducationLevel(models.Model):
     def __str__(self):
         return self.name
     
-class ClosenessScore(models.Model):
-    '''
-    Lookup table for relationship closeness levels (High, Medium, Low).
-    Read-only — no user_id FK. System defaults only, seeded via data migration.
-    Value is calculated and assigned by RecalculateClosenessSignal on Event save.
-    '''
-    name = models.CharField(max_length=50)
-    is_system_default = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = 'closeness_score'
-    
-    def __str__(self):
-        return self.name
-    
 class Mood(models.Model):
     '''
     Lookup table for event mood tags (Happy, Neutral, Sad, Angry).

@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from events.serializers import EventSerializer
-from contacts.serializers import ContactListSerializer
 
 
 class ActivityStatsSerializer(serializers.Serializer):
@@ -9,8 +8,12 @@ class ActivityStatsSerializer(serializers.Serializer):
 
 
 class DecayContactSerializer(serializers.Serializer):
-    contact = ContactListSerializer(read_only=True)
-    days_since_interaction = serializers.IntegerField(read_only=True)
+    contact_id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    last_interaction_date = serializers.DateTimeField(read_only=True)
+    days_since = serializers.IntegerField(read_only=True)
+    relationship_trend = serializers.CharField(read_only=True)
+    connection_strength = serializers.IntegerField(read_only=True)
 
 
 class DashboardSerializer(serializers.Serializer):

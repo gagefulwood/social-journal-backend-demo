@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import Contact, Fact, Observation
-from lookups.serializers import ClosenessScoreSerializer
 
 class FactSerializer(serializers.ModelSerializer):
     '''
@@ -32,13 +31,11 @@ class ContactListSerializer(serializers.ModelSerializer):
     Avoids heavy joins and returns computed relationship card fields.
     Used by ContactVIewSet for GET /api/contacts/
     '''
-    closeness_score = ClosenessScoreSerializer(read_only=True)
-
     class Meta:
         model = Contact
         fields = [
             'id', 'first_name', 'last_name', 'email',
-            'phone_number', 'closeness_score',
+            'phone_number',
             'interaction_frequency_score', 'relationship_trend',
             'connection_strength',
         ]
@@ -48,10 +45,7 @@ class ContactSerializer(serializers.ModelSerializer):
     Full CRUD serializer for Contact.
     Used by ContactViewSet for POST, PATCH, DELETE, and GET /api/contacts/{id}/
     user is set automatically from request.user in the ViewSet never request body.
-    closeness_score is read_only and never set manually
     '''
-    closeness_score = ClosenessScoreSerializer(read_only=True)
-
     class Meta:
         model = Contact
         fields = [
@@ -59,13 +53,12 @@ class ContactSerializer(serializers.ModelSerializer):
             'email', 'phone_number', 'address', 'birthday', 'first_met_date',
             'occupation', 'custom_occupation', 'company',
             'education_level', 'custom_education_level', 'school',
-            'closeness_score', 'interaction_frequency_score',
+            'interaction_frequency_score',
             'relationship_trend', 'interaction_diversity_score',
             'sentiment_profile', 'connection_strength',
         ]
         read_only_fields = [
             'user',
-            'closeness_score',
             'interaction_frequency_score',
             'relationship_trend',
             'interaction_diversity_score',

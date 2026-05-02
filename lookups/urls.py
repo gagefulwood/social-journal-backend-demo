@@ -6,7 +6,6 @@ from .views import (
     ObservationMarkerViewSet, 
     OccupationViewSet, 
     EducationLevelViewSet,
-    ClosenessScoreViewSet, 
     MediaTypeViewSet, 
     EntryTagViewSet,
 )
@@ -18,7 +17,6 @@ router.register("fact-categories",    FactCategoryViewSet,    basename="fact-cat
 router.register("observation-markers", ObservationMarkerViewSet, basename="observation-marker")
 router.register("occupations",        OccupationViewSet,      basename="occupation")
 router.register("education-levels",   EducationLevelViewSet,  basename="education-level")
-router.register("closeness-scores",   ClosenessScoreViewSet,  basename="closeness-score")
 router.register("media-types",        MediaTypeViewSet,       basename="media-type")
 router.register("entry-tags",         EntryTagViewSet,        basename="entry-tag")
 

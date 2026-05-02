@@ -5,6 +5,7 @@ from rest_framework.test import APIClient
 from django.test import TestCase
 
 from contacts.models import Contact
+from contacts.filters import ContactFilter
 
 from .factories import ContactFactory, UserFactory
 
@@ -80,6 +81,18 @@ class ContactViewSetTests(TestCase):
         self.assertEqual(result["interaction_frequency_score"], 30)
         self.assertEqual(result["relationship_trend"], "growing")
         self.assertEqual(result["connection_strength"], 60)
+        self.assertNotIn("closeness_score", result)
+
+    def test_detail_excludes_closeness_score(self):
+        contact = ContactFactory(user=self.user)
+
+        response = self.client.get(reverse("contact-detail", args=[contact.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("closeness_score", response.data)
+
+    def test_filter_no_longer_exposes_closeness_score(self):
+        self.assertNotIn("closeness_score", ContactFilter.get_filters())
 
     def test_partial_update_allows_owner(self):
         contact = ContactFactory(user=self.user, first_name="Ada")
