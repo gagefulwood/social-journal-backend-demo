@@ -74,28 +74,29 @@ class Contact(models.Model):
     def __str__(self):
         return f'{self.first_name} {self.last_name}'.strip()
 
-class ContactPersonalDetail(models.Model):
+class Fact(models.Model):
     '''
-    Flexible key-value store for the unstructured custom personal details tied to a contact.
+    Structured, categorized information known about a contact.
     category_id references a node in FactCategory.
-    detail_value stores the literal content of the detail
+    detail_value stores the literal content of the fact.
     '''
     contact = models.ForeignKey(
         Contact,
         on_delete=models.CASCADE,
-        related_name='personal_details'
+        related_name='facts'
     )
     category = models.ForeignKey(
         FactCategory,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='contact_details'
+        related_name='facts'
     )
     detail_value = models.TextField()
 
     class Meta:
-        db_table = 'contact_personal_details'
+        db_table = 'facts'
+        ordering = ['id']
 
     def __str__(self):
         return f'{self.contact} - {self.category}: {self.detail_value}'

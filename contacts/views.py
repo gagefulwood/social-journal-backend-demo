@@ -3,11 +3,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Contact, ContactPersonalDetail, ContactLooseNote
+from .models import Contact, Fact, ContactLooseNote
 from .serializers import (
     ContactSerializer,
     ContactListSerializer,
-    ContactPersonalDetailSerializer,
+    FactSerializer,
     ContactLooseNoteSerializer,
 )
 from .filters import ContactFilter
@@ -41,21 +41,21 @@ class ContactViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-class ContactPersonalDetailViewSet(viewsets.ModelViewSet):
+class FactViewSet(viewsets.ModelViewSet):
     '''
-    GET /api/contacts/{contact_id}/details/
-    POST /api/contacts/{contact_id}/details/
-    PATCH /api/contacts/{contact_id}/details/{id}/
-    DELETE /api/contacts/{cotact_id}/details/{id}/
+    GET /api/contacts/{contact_id}/facts/
+    POST /api/contacts/{contact_id}/facts/
+    PATCH /api/contacts/{contact_id}/facts/{id}/
+    DELETE /api/contacts/{contact_id}/facts/{id}/
     '''
-    serializer_class = ContactPersonalDetailSerializer
+    serializer_class = FactSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
-            return ContactPersonalDetail.objects.none()
-        return ContactPersonalDetail.objects.filter(
+            return Fact.objects.none()
+        return Fact.objects.filter(
             contact_id=self.kwargs['contact_pk'],
             contact__user=self.request.user,
         )

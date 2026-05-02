@@ -291,8 +291,8 @@ Content-Type: application/json
 
 ###
 
-### 8f. Add a personal detail
-POST {{baseUrl}}/api/contacts/1/details/
+### 8f. Add a fact
+POST {{baseUrl}}/api/contacts/1/facts/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -302,8 +302,8 @@ Content-Type: application/json
 
 ###
 
-### 8g. List personal details
-GET {{baseUrl}}/api/contacts/1/details/
+### 8g. List facts
+GET {{baseUrl}}/api/contacts/1/facts/
 Authorization: Bearer {{accessToken}}
 
 ###

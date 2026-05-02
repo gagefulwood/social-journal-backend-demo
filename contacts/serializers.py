@@ -1,16 +1,16 @@
 from rest_framework import serializers
-from .models import Contact, ContactPersonalDetail, ContactLooseNote
+from .models import Contact, Fact, ContactLooseNote
 from lookups.serializers import ClosenessScoreSerializer
 
-class ContactPersonalDetailSerializer(serializers.ModelSerializer):
+class FactSerializer(serializers.ModelSerializer):
     '''
-    Full CRUD serializer for ContactPersonalDetail
-    Used by ContactPersonalDetailViewSet nested under:
-    /api/contacts/{id}/details/
+    Full CRUD serializer for Fact.
+    Used by FactViewSet nested under:
+    /api/contacts/{id}/facts/
     contact_id is set automatically from the URL kwarg in the ViewSet
     '''
     class Meta:
-        model = ContactPersonalDetail
+        model = Fact
         fields = ['id', 'contact', 'category', 'detail_value']
         read_only_fields = ['contact']
 
