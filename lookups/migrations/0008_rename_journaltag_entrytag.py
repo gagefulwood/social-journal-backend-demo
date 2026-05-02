@@ -7,7 +7,6 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('journal', '0003_journalentry_user'),
         ('lookups', '0007_alter_factcategory_user_alter_factcategory_table'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

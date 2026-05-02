@@ -30,7 +30,7 @@ class Event(models.Model):
     Event model representing logged social event journals.
     context_category links with ContextCategory lookup (social, pofessional, family)
     Participants are linked with EventParticipant junction model
-    Journal entries are linkedvia OneToOne FK to the JournalEntry model
+    Journals are linked by Log, Reflection, and Exercise models.
     '''
     user = models.ForeignKey(
         Users,
