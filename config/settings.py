@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'contacts',
     'events',
     'journals',
-    'groups',
     'media',
     'dashboard',
     'lookups',

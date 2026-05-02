@@ -115,8 +115,8 @@ social-journal-backend/
 ├── users/           # Auth, JWT, MFA, user profile
 ├── contacts/        # Contact management
 ├── events/          # Event logging
-├── journal/         # Journal entries and reflections
-├── groups/          # Social groups and network graph
+├── journals/        # Logs, reflections, and exercises
+├── media/           # Uploads and contact profile pictures
 ├── dashboard/       # Aggregated dashboard data
 ├── lookups/         # Lookup tables (moods, categories, etc.)
 ├── core/            # Shared permissions, throttles, pagination
