@@ -126,9 +126,9 @@ class ContextCategory(models.Model):
     def __str__(self):
         return self.name
     
-class DetailCategoryTree(models.Model):
+class FactCategory(models.Model):
     '''
-    Self-referencing lookup tree for contact personal detail categories.
+    Self-referencing lookup tree for contact fact categories.
     Examples: Health > Allergies > Food Allergies.
     parent_id=NULL indicates a root-level category.
     System defaults seeded via data migration.
@@ -139,7 +139,7 @@ class DetailCategoryTree(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='detail_categories'
+        related_name='fact_categories'
     )
     parent = models.ForeignKey(
         'self',
@@ -155,7 +155,7 @@ class DetailCategoryTree(models.Model):
     objects = LookupManager()
 
     class Meta:
-        db_table = 'detail_categories'
+        db_table = 'fact_categories'
 
     def __str__(self):
         return self.name

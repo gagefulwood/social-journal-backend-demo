@@ -2,7 +2,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     MoodViewSet, 
     ContextCategoryViewSet, 
-    DetailCategoryViewSet,
+    FactCategoryViewSet,
     ObservationMarkerViewSet, 
     OccupationViewSet, 
     EducationLevelViewSet,
@@ -14,7 +14,7 @@ from .views import (
 router = DefaultRouter()
 router.register("moods",              MoodViewSet,            basename="mood")
 router.register("context-categories", ContextCategoryViewSet, basename="context-category")
-router.register("detail-categories",  DetailCategoryViewSet,  basename="detail-category")
+router.register("fact-categories",    FactCategoryViewSet,    basename="fact-category")
 router.register("observation-markers", ObservationMarkerViewSet, basename="observation-marker")
 router.register("occupations",        OccupationViewSet,      basename="occupation")
 router.register("education-levels",   EducationLevelViewSet,  basename="education-level")

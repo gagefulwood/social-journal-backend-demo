@@ -5,7 +5,7 @@ from django.db.models import Q
 from .models import (
     Mood,
     ContextCategory,
-    DetailCategoryTree,
+    FactCategory,
     ObservationMarker,
     Occupation,
     EducationLevel,
@@ -17,7 +17,7 @@ from .models import (
 from .serializers import (
     MoodSerializer,
     ContextCategorySerializer,
-    DetailCategorySerializer,
+    FactCategorySerializer,
     ObservationMarkerSerializer,
     OccupationSerializer,
     EducationLevelSerializer,
@@ -72,16 +72,16 @@ class ContextCategoryViewSet(WritableLookupViewSet):
         return ContextCategory.objects.for_user(self.request.user)
 
 
-class DetailCategoryViewSet(WritableLookupViewSet):
-    serializer_class = DetailCategorySerializer
+class FactCategoryViewSet(WritableLookupViewSet):
+    serializer_class = FactCategorySerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
-            return DetailCategoryTree.objects.none()
-        return DetailCategoryTree.objects.filter(
+            return FactCategory.objects.none()
+        return FactCategory.objects.filter(
             Q(is_system_default=True) | Q(user=self.request.user),
             parent__isnull=True,
         )

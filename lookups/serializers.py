@@ -6,7 +6,7 @@ from .models import (
     ClosenessScore,
     Mood,
     ContextCategory,
-    DetailCategoryTree,
+    FactCategory,
     ObservationMarker,
     MediaType,
     JournalTag,
@@ -42,15 +42,15 @@ class ContextCategorySerializer(serializers.ModelSerializer):
         fields = ["id", "name", "color", "is_system_default"]
         read_only_fields = ['is_system_default']
 
-class DetailCategorySerializer(serializers.ModelSerializer):
+class FactCategorySerializer(serializers.ModelSerializer):
     '''
-    Serializer for DetailCategoryTree that includes nested children.
+    Serializer for FactCategory that includes nested children.
     Root categories (parent=null) are returned with their full subtree.
     '''
     children = serializers.SerializerMethodField()
 
     class Meta:
-        model = DetailCategoryTree
+        model = FactCategory
         fields = ["id", "name", "icon_reference", "parent", "is_system_default", "children"]
         read_only_fields = ['is_system_default']
 
@@ -68,7 +68,7 @@ class DetailCategorySerializer(serializers.ModelSerializer):
             children = children.filter(
                 Q(is_system_default=True) | Q(user=request.user)
             )
-        return DetailCategorySerializer(
+        return FactCategorySerializer(
             children, many=True, context=self.context
         ).data
 

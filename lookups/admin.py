@@ -5,7 +5,7 @@ from .models import (
     ClosenessScore,
     Mood,
     ContextCategory,
-    DetailCategoryTree,
+    FactCategory,
     JournalTag,
     ObservationMarker,
     MediaType,
@@ -45,8 +45,8 @@ class ContextCategoryAdmin(admin.ModelAdmin):
     search_fields = ['name']
 
 
-@admin.register(DetailCategoryTree)
-class DetailCategoryTreeAdmin(admin.ModelAdmin):
+@admin.register(FactCategory)
+class FactCategoryAdmin(admin.ModelAdmin):
     list_display  = ['name', 'parent', 'user', 'is_system_default']
     list_filter   = ['is_system_default']
     search_fields = ['name']

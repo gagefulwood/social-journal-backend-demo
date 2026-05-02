@@ -5,7 +5,7 @@ from lookups.models import (
     Occupation,
     EducationLevel,
     ClosenessScore,
-    DetailCategoryTree,
+    FactCategory,
     ObservationMarker,
 )
 
@@ -77,7 +77,7 @@ class Contact(models.Model):
 class ContactPersonalDetail(models.Model):
     '''
     Flexible key-value store for the unstructured custom personal details tied to a contact.
-    category_id references a node in the DetailCategoryTree
+    category_id references a node in FactCategory.
     detail_value stores the literal content of the detail
     '''
     contact = models.ForeignKey(
@@ -86,7 +86,7 @@ class ContactPersonalDetail(models.Model):
         related_name='personal_details'
     )
     category = models.ForeignKey(
-        DetailCategoryTree,
+        FactCategory,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
