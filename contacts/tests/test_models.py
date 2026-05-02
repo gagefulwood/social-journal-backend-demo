@@ -27,6 +27,7 @@ class ContactModelTests(TestCase):
             "education_level",
             "custom_education_level",
             "school",
+            "profile_picture",
             "interaction_frequency_score",
             "relationship_trend",
             "interaction_diversity_score",

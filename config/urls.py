@@ -28,4 +28,5 @@ urlpatterns = [
     path('api/lookups/', include('lookups.urls')),
     path('api/', include('dashboard.urls')),
     path('api/journals/', include('journals.urls')),
+    path('api/', include('media.urls')),
 ]

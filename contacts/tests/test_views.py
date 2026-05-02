@@ -6,6 +6,7 @@ from django.test import TestCase
 
 from contacts.models import Contact
 from contacts.filters import ContactFilter
+from media.tests.factories import MediaAssetFactory
 
 from .factories import ContactFactory, UserFactory
 
@@ -81,6 +82,7 @@ class ContactViewSetTests(TestCase):
         self.assertEqual(result["interaction_frequency_score"], 30)
         self.assertEqual(result["relationship_trend"], "growing")
         self.assertEqual(result["connection_strength"], 60)
+        self.assertIn("profile_picture", result)
         self.assertNotIn("closeness_score", result)
 
     def test_detail_excludes_closeness_score(self):
@@ -93,6 +95,67 @@ class ContactViewSetTests(TestCase):
 
     def test_filter_no_longer_exposes_closeness_score(self):
         self.assertNotIn("closeness_score", ContactFilter.get_filters())
+
+    def test_partial_update_sets_profile_picture_owned_by_user(self):
+        contact = ContactFactory(user=self.user)
+        asset = MediaAssetFactory(user=self.user, content_type="image/png")
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"profile_picture_id": asset.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        contact.refresh_from_db()
+        self.assertEqual(contact.profile_picture, asset)
+        self.assertEqual(response.data["profile_picture"]["id"], asset.id)
+
+    def test_partial_update_rejects_other_users_profile_picture(self):
+        contact = ContactFactory(user=self.user)
+        asset = MediaAssetFactory(user=self.other_user, content_type="image/png")
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"profile_picture_id": asset.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        contact.refresh_from_db()
+        self.assertIsNone(contact.profile_picture)
+
+    def test_partial_update_rejects_non_image_profile_picture(self):
+        contact = ContactFactory(user=self.user)
+        asset = MediaAssetFactory(
+            user=self.user,
+            original_filename="document.pdf",
+            content_type="application/pdf",
+        )
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"profile_picture_id": asset.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        contact.refresh_from_db()
+        self.assertIsNone(contact.profile_picture)
+
+    def test_partial_update_clears_profile_picture(self):
+        asset = MediaAssetFactory(user=self.user, content_type="image/png")
+        contact = ContactFactory(user=self.user, profile_picture=asset)
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"profile_picture_id": None},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        contact.refresh_from_db()
+        self.assertIsNone(contact.profile_picture)
 
     def test_partial_update_allows_owner(self):
         contact = ContactFactory(user=self.user, first_name="Ada")

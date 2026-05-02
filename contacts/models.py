@@ -68,6 +68,13 @@ class Contact(models.Model):
     )
     custom_education_level = models.CharField(max_length=255, blank=True)
     school = models.CharField(max_length=255, blank=True)
+    profile_picture = models.ForeignKey(
+        'media.MediaAsset',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='profile_contacts',
+    )
 
     interaction_frequency_score = models.IntegerField(default=0)
     relationship_trend = models.CharField(

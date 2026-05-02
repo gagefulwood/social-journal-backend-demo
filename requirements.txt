@@ -3,11 +3,13 @@ attrs==26.1.0
 Django==6.0.3
 django-cors-headers==4.9.0
 django-filter==25.2
+django-storages==1.14.6
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
 drf-nested-routers==0.95.0
 drf-spectacular==0.29.0
 factory_boy==3.3.3
+boto3==1.41.5
 inflection==0.5.1
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
