@@ -127,6 +127,14 @@ class AuthCookieTests(TestCase):
 
         self.assertEqual(second_response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_refresh_rejects_malformed_cookie(self):
+        self.client.cookies[settings.JWT_REFRESH_COOKIE_NAME] = 'not-a-jwt'
+
+        response = self.client.post(reverse('auth-token-refresh'), {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['detail'], 'Refresh token is invalid.')
+
     def test_refresh_rejects_body_token_without_cookie(self):
         refresh = RefreshToken.for_user(self.user)
 
@@ -155,7 +163,8 @@ class AuthCookieTests(TestCase):
 
         response = self.client.post(reverse('auth-logout'), {}, format='json')
 
-        self.assertEqual(response.status_code, status.HTTP_205_RESET_CONTENT)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['detail'], 'Logged out')
         self.assertEqual(response.cookies[settings.JWT_ACCESS_COOKIE_NAME]['max-age'], 0)
         self.assertEqual(response.cookies[settings.JWT_REFRESH_COOKIE_NAME]['max-age'], 0)
 

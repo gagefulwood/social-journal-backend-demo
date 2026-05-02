@@ -104,6 +104,8 @@ class LogoutView(APIView):
     POST /api/auth/logout/ - Invalidate the current session.
     Reads the refresh token from the httpOnly cookie, blacklists it when present,
     and clears access/refresh cookies.
+    Returns 200 with a small JSON body because 205 responses must not include
+    response content and DRF normally returns JSON bodies for command success.
     Permission: IsAuthenticated
     '''
     http_method_names = ['post', 'options']
@@ -111,8 +113,8 @@ class LogoutView(APIView):
 
     def post(self, request, *args, **kwargs):
         response = Response(
-            {'detail': 'Successfully logged out.'},
-            status=status.HTTP_205_RESET_CONTENT,
+            {'detail': 'Logged out'},
+            status=status.HTTP_200_OK,
         )
         try:
             refresh_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)

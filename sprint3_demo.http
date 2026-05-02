@@ -193,7 +193,7 @@ Content-Type: application/json
 ### 7. LOGOUT
 ### ============================================================
 
-### 7a. Logout — blacklists the refresh cookie (expect 205)
+### 7a. Logout — blacklists the refresh cookie (expect 200)
 POST {{baseUrl}}/api/auth/logout/
 Content-Type: application/json
 
