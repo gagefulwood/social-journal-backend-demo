@@ -52,6 +52,8 @@ class ContactViewSetTests(TestCase):
                 "first_name": "Ada",
                 "last_name": "Lovelace",
                 "user": self.other_user.id,
+                "connection_strength": 100,
+                "relationship_trend": "growing",
             },
             format="json",
         )
@@ -59,6 +61,25 @@ class ContactViewSetTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contact = Contact.objects.get(id=response.data["id"])
         self.assertEqual(contact.user, self.user)
+        self.assertEqual(contact.connection_strength, 0)
+        self.assertEqual(contact.relationship_trend, "dormant")
+
+    def test_list_includes_relationship_statistics(self):
+        contact = ContactFactory(
+            user=self.user,
+            interaction_frequency_score=30,
+            relationship_trend="growing",
+            connection_strength=60,
+        )
+
+        response = self.client.get(reverse("contact-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result = response.data["results"][0]
+        self.assertEqual(result["id"], contact.id)
+        self.assertEqual(result["interaction_frequency_score"], 30)
+        self.assertEqual(result["relationship_trend"], "growing")
+        self.assertEqual(result["connection_strength"], 60)
 
     def test_partial_update_allows_owner(self):
         contact = ContactFactory(user=self.user, first_name="Ada")

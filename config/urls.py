@@ -27,5 +27,5 @@ urlpatterns = [
     path('api/', include('events.urls')),
     path('api/lookups/', include('lookups.urls')),
     path('api/', include('dashboard.urls')),
-    path('api/journals/', include('journal.urls')),
+    path('api/journals/', include('journals.urls')),
 ]

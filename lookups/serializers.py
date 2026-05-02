@@ -33,7 +33,7 @@ class ClosenessScoreSerializer(serializers.ModelSerializer):
 class MoodSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mood
-        fields = ["id", "name", "emoji_icon", "is_system_default"]
+        fields = ["id", "name", "emoji_icon", "polarity", "is_system_default"]
         read_only_fields = ['is_system_default']
 
 class ContextCategorySerializer(serializers.ModelSerializer):

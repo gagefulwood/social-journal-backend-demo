@@ -14,9 +14,23 @@ class ContactAdmin(admin.ModelAdmin):
     '''
     Contact admin with inline facts and observations visible from one page.
     '''
-    list_display = ['first_name', 'last_name', 'email', 'user', 'closeness_score']
+    list_display = [
+        'first_name',
+        'last_name',
+        'email',
+        'user',
+        'relationship_trend',
+        'connection_strength',
+    ]
     search_fields = ['first_name', 'last_name', 'email']
-    list_filter = ['closeness_score']
+    list_filter = ['relationship_trend', 'closeness_score']
+    readonly_fields = [
+        'interaction_frequency_score',
+        'relationship_trend',
+        'interaction_diversity_score',
+        'sentiment_profile',
+        'connection_strength',
+    ]
     inlines = [FactInline, ObservationInline]
 
 @admin.register(Observation)

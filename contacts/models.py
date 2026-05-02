@@ -1,5 +1,9 @@
 from django.db import models
 from django.db.models import Q
+from core.constants import (
+    RELATIONSHIP_TREND_CHOICES,
+    RELATIONSHIP_TREND_DORMANT,
+)
 from users.models import Users
 from lookups.models import (
     Occupation,
@@ -29,7 +33,7 @@ class ObservationManager(models.Manager):
 class Contact(models.Model):
     '''
     Core PRM model for contacts.
-    closeness_score is an automatic calculation on event saves
+    Relationship statistic fields are recalculated from event participation.
     '''
     user = models.ForeignKey(
         Users,
@@ -73,6 +77,15 @@ class Contact(models.Model):
         blank=True,
         related_name='contacts'
     )
+    interaction_frequency_score = models.IntegerField(default=0)
+    relationship_trend = models.CharField(
+        max_length=20,
+        choices=RELATIONSHIP_TREND_CHOICES,
+        default=RELATIONSHIP_TREND_DORMANT,
+    )
+    interaction_diversity_score = models.IntegerField(default=0)
+    sentiment_profile = models.JSONField(default=dict, blank=True)
+    connection_strength = models.IntegerField(default=0)
     objects = ContactManager()
 
     class Meta:

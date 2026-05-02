@@ -28,6 +28,11 @@ class ContactModelTests(TestCase):
             "custom_education_level",
             "school",
             "closeness_score",
+            "interaction_frequency_score",
+            "relationship_trend",
+            "interaction_diversity_score",
+            "sentiment_profile",
+            "connection_strength",
         }
 
         self.assertTrue(expected_fields.issubset(field_names))
@@ -47,6 +52,15 @@ class ContactModelTests(TestCase):
         contact = Contact.objects.create(user=user, first_name="Ada")
 
         self.assertTrue(contact.is_active)
+
+    def test_relationship_statistics_defaults(self):
+        contact = ContactFactory()
+
+        self.assertEqual(contact.interaction_frequency_score, 0)
+        self.assertEqual(contact.relationship_trend, "dormant")
+        self.assertEqual(contact.interaction_diversity_score, 0)
+        self.assertEqual(contact.sentiment_profile, {})
+        self.assertEqual(contact.connection_strength, 0)
 
     def test_db_table_is_contacts(self):
         self.assertEqual(Contact._meta.db_table, "contacts")

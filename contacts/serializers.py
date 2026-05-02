@@ -29,7 +29,7 @@ class ContactListSerializer(serializers.ModelSerializer):
     '''
     Serializer for the contacts lists view
     Returns only fields needed for the ContactCard component on frontend
-    Avoids heavy joins - closeness_score is the only nested field
+    Avoids heavy joins and returns computed relationship card fields.
     Used by ContactVIewSet for GET /api/contacts/
     '''
     closeness_score = ClosenessScoreSerializer(read_only=True)
@@ -39,6 +39,8 @@ class ContactListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'email',
             'phone_number', 'closeness_score',
+            'interaction_frequency_score', 'relationship_trend',
+            'connection_strength',
         ]
 
 class ContactSerializer(serializers.ModelSerializer):
@@ -57,6 +59,16 @@ class ContactSerializer(serializers.ModelSerializer):
             'email', 'phone_number', 'address', 'birthday', 'first_met_date',
             'occupation', 'custom_occupation', 'company',
             'education_level', 'custom_education_level', 'school',
-            'closeness_score',
+            'closeness_score', 'interaction_frequency_score',
+            'relationship_trend', 'interaction_diversity_score',
+            'sentiment_profile', 'connection_strength',
         ]
-        read_only_fields = ['user', 'closeness_score']
+        read_only_fields = [
+            'user',
+            'closeness_score',
+            'interaction_frequency_score',
+            'relationship_trend',
+            'interaction_diversity_score',
+            'sentiment_profile',
+            'connection_strength',
+        ]

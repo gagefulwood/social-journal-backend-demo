@@ -53,7 +53,7 @@ INSTALLED_APPS = [
     'users',
     'contacts',
     'events',
-    'journal',
+    'journals',
     'groups',
     'dashboard',
     'lookups',

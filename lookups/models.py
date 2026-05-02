@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from core.constants import MOOD_POLARITY_CHOICES, MOOD_POLARITY_NEUTRAL
 from users.models import Users
 
 class LookupManager(models.Manager):
@@ -91,6 +92,10 @@ class Mood(models.Model):
     )
     name = models.CharField(max_length=100)
     emoji_icon = models.CharField(max_length=10)
+    polarity = models.IntegerField(
+        choices=MOOD_POLARITY_CHOICES,
+        default=MOOD_POLARITY_NEUTRAL,
+    )
     is_system_default = models.BooleanField(default=False)
 
     objects = LookupManager()
