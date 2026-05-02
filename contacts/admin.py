@@ -14,7 +14,7 @@ class ContactAdmin(admin.ModelAdmin):
     '''
     Contact admin with the inline personal details and loose notes visible from one page
     '''
-    list_display = ['first_name', 'last_name', 'email', 'user', 'trust_score', 'closeness_score']
+    list_display = ['first_name', 'last_name', 'email', 'user', 'closeness_score']
     search_fields = ['first_name', 'last_name', 'email']
     list_filter = ['closeness_score']
     inlines = [ContactPersonalDetailInline, ContactLooseNoteInline]

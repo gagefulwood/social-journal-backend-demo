@@ -39,7 +39,7 @@ class ContactListSerializer(serializers.ModelSerializer):
         model = Contact
         fields = [
             'id', 'first_name', 'last_name', 'email',
-            'phone_number', 'trust_score', 'closeness_score',
+            'phone_number', 'closeness_score',
         ]
 
 class ContactSerializer(serializers.ModelSerializer):
@@ -58,6 +58,6 @@ class ContactSerializer(serializers.ModelSerializer):
             'email', 'phone_number', 'address', 'birthday', 'first_met_date',
             'occupation', 'custom_occupation', 'company',
             'education_level', 'custom_education_level', 'school',
-            'trust_score', 'closeness_score',
+            'closeness_score',
         ]
         read_only_fields = ['user', 'closeness_score']

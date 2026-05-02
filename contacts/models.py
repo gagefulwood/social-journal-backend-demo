@@ -16,12 +16,11 @@ class ContactManager(models.Manager):
     prevents cross-user data leaks.
     '''
     def for_user(self, user):
-        return self.get_queryset().filter(user=user)
+        return self.get_queryset().filter(user=user, is_active=True)
 
 class Contact(models.Model):
     '''
     Core PRM model for contacts.
-    trust_score is user-defined (for now)
     closeness_score is an automatic calculation on event saves
     '''
     user = models.ForeignKey(
@@ -34,6 +33,7 @@ class Contact(models.Model):
     last_name = models.CharField(max_length=150, blank=True)
     email = models.EmailField(blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
+    is_active = models.BooleanField(default=True)
     address = models.TextField(blank=True)
     birthday = models.DateField(null=True, blank=True)
     first_met_date = models.DateField(null=True, blank=True)
@@ -58,11 +58,6 @@ class Contact(models.Model):
     custom_education_level = models.CharField(max_length=255, blank=True)
     school = models.CharField(max_length=255, blank=True)
 
-    trust_score = models.IntegerField(
-        null=True,
-        blank=True,
-        default=50,
-    )
     closeness_score = models.ForeignKey(
         ClosenessScore,
         on_delete=models.SET_NULL,

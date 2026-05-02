@@ -257,8 +257,7 @@ Content-Type: application/json
 {
     "first_name": "John",
     "last_name": "Doe",
-    "email": "john@example.com",
-    "trust_score": 75
+    "email": "john@example.com"
 }
 
 ###
@@ -287,7 +286,7 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-    "trust_score": 90
+    "phone_number": "+15555550123"
 }
 
 ###
