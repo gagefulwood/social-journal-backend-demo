@@ -182,12 +182,21 @@ if AWS_STORAGE_BUCKET_NAME:
 
 AUTH_USER_MODEL = 'users.Users'
 
+# TODO: Add the production frontend origin before any production deploy.
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+JWT_ACCESS_COOKIE_NAME = config('JWT_ACCESS_COOKIE_NAME', default='sj_access')
+JWT_REFRESH_COOKIE_NAME = config('JWT_REFRESH_COOKIE_NAME', default='sj_refresh')
+JWT_COOKIE_HTTPONLY = True
+# Defaults to False in local DEBUG over HTTP, True outside DEBUG for HTTPS deployments.
+JWT_COOKIE_SECURE = config('JWT_COOKIE_SECURE', default=not DEBUG, cast=bool)
+JWT_COOKIE_SAMESITE = config('JWT_COOKIE_SAMESITE', default='Lax')
+JWT_COOKIE_PATH = config('JWT_COOKIE_PATH', default='/')
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'users.authentication.CookieJWTAuthentication',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_FILTER_BACKENDS': (

@@ -5,9 +5,16 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.views import TokenRefreshView
 from drf_spectacular.utils import extend_schema
 import pyotp
 
+from django.conf import settings
+from users.models import Users
+
+from .cookies import build_auth_metadata, clear_token_cookies, role_for_user, set_token_cookies
 from .serializers import (
     UserRegistrationSerializer,
     CustomTokenObtainPairSerializer,
@@ -38,42 +45,86 @@ class RegisterView(generics.CreateAPIView):
 class CustomTokenObtainPairView(TokenObtainPairView):
     '''
     POST /api/auth/token/ - Authenticate and obtain JWT token pair.
-    Returns access token (30 min) and refresh token (7 days).
+    Sets access and refresh tokens as httpOnly cookies.
+    Response body contains non-sensitive auth metadata only.
     JWT payload includes: role, mfa_enabled, mfa_pending.
     Permission: AllowAny
     '''
     serializer_class = CustomTokenObtainPairSerializer
 
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        access_token = validated_data.pop('access_token')
+        refresh_token = validated_data.pop('refresh_token')
+        response = Response(validated_data, status=status.HTTP_200_OK)
+        return set_token_cookies(response, access_token, refresh_token)
+
+
+class CookieTokenRefreshView(TokenRefreshView):
+    '''
+    POST /api/auth/token/refresh/ - Refresh auth cookies.
+    Reads refresh token from the httpOnly refresh cookie.
+    Rotates auth cookies on success and returns non-sensitive metadata only.
+    Permission: AllowAny
+    '''
+    serializer_class = TokenRefreshSerializer
+
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)
+        if not refresh_token:
+            return Response(
+                {'detail': 'Refresh cookie is required.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        try:
+            refresh = RefreshToken(refresh_token)
+            user = Users.objects.get(id=refresh[api_settings.USER_ID_CLAIM])
+        except (TokenError, Users.DoesNotExist):
+            return Response(
+                {'detail': 'Refresh token is invalid.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        serializer = self.get_serializer(data={'refresh': refresh_token})
+        serializer.is_valid(raise_exception=True)
+        token_data = serializer.validated_data
+        response = Response(build_auth_metadata(user), status=status.HTTP_200_OK)
+        return set_token_cookies(
+            response,
+            token_data['access'],
+            token_data.get('refresh'),
+        )
+
 @extend_schema(exclude=True)
-class LogoutView(generics.CreateAPIView):
+class LogoutView(APIView):
     '''
     POST /api/auth/logout/ - Invalidate the current session.
-    Accepts: { refresh: "<token>" } in request body.
-    Blacklists the refresh token via SimpleJWT token_blacklist.
-    Returns 205 on success, 400 if token is missing or already blacklisted.
+    Reads the refresh token from the httpOnly cookie, blacklists it when present,
+    and clears access/refresh cookies.
     Permission: IsAuthenticated
     '''
+    http_method_names = ['post', 'options']
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
+        response = Response(
+            {'detail': 'Successfully logged out.'},
+            status=status.HTTP_205_RESET_CONTENT,
+        )
         try:
-            refresh_token = request.data.get('refresh')
-            if not refresh_token:
-                return Response(
-                    {'detail': 'Refresh token is required.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return Response(
-                {'detail': 'Successfully logged out.'},
-                status=status.HTTP_205_RESET_CONTENT,
-            )
+            refresh_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)
+            if refresh_token:
+                RefreshToken(refresh_token).blacklist()
+            return clear_token_cookies(response)
         except TokenError:
-            return Response(
+            response = Response(
                 {'detail': 'Token is invalid or already blacklisted.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+            return clear_token_cookies(response)
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
     '''
@@ -145,17 +196,16 @@ class MFAVerifyView(APIView):
         request.user.is_mfa_enabled = True
         request.user.save(update_fields=['is_mfa_enabled'])
 
-        # Issue fresh tokens with mfa_pending=False so middleware allows on frontend
         refresh = RefreshToken.for_user(request.user)
         refresh['mfa_pending'] = False
         refresh['mfa_enabled'] = True
-        try:
-            refresh['role'] = request.user.groups.first().name if request.user.groups.exists() else 'Standard User'
-        except Exception:
-            refresh['role'] = 'Standard User'
-        
-        return Response(
-            {'detail': 'MFA successfully enabled.',
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-            }, status=status.HTTP_200_OK)
+        refresh['role'] = role_for_user(request.user)
+
+        response = Response(
+            {
+                'detail': 'MFA successfully enabled.',
+                **build_auth_metadata(request.user, mfa_pending=False),
+            },
+            status=status.HTTP_200_OK,
+        )
+        return set_token_cookies(response, refresh.access_token, refresh)

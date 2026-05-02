@@ -93,18 +93,17 @@ Django admin will be available at `http://127.0.0.1:8000/admin/`.
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | POST | `/api/auth/register/` | Register a new account | None |
-| POST | `/api/auth/token/` | Login and obtain JWT tokens | None |
-| POST | `/api/auth/token/refresh/` | Refresh access token | None |
+| POST | `/api/auth/token/` | Login and set JWT cookies | None |
+| POST | `/api/auth/token/refresh/` | Refresh JWT cookies | None |
 | POST | `/api/auth/logout/` | Logout and blacklist refresh token | Required |
 | GET | `/api/auth/mfa/setup/` | Generate MFA secret and QR URI | Required |
 | POST | `/api/auth/mfa/verify/` | Verify TOTP code and enable MFA | Required |
 | GET | `/api/users/me/` | Get current user profile | Required |
 | PATCH | `/api/users/me/` | Update current user profile | Required |
 
-For protected endpoints include the access token in the request header:
-```
-Authorization: Bearer <access_token>
-```
+Protected endpoints authenticate through httpOnly JWT cookies. API clients must send
+credentials with requests; access and refresh token strings are not returned in JSON
+response bodies.
 
 ---
 

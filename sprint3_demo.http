@@ -10,8 +10,6 @@
 @baseUrl = http://127.0.0.1:8000
 @email = demo@example.com
 @password = SecurePass1!
-@accessToken = REPLACE_WITH_LOCAL_TOKEN
-@refreshToken = REPLACE_WITH_LOCAL_TOKEN
 
 
 ### ============================================================
@@ -68,12 +66,12 @@ Content-Type: application/json
 ### 2. LOGIN
 ### ============================================================
 
-### 2a. Login — valid credentials (copy access + refresh tokens into Variables above)
+### 2a. Login — valid credentials (sets httpOnly access + refresh cookies)
 POST {{baseUrl}}/api/auth/token/
 Content-Type: application/json
 
 {
-    "email": "{{email}}",
+    "identifier": "{{email}}",
     "password": "{{password}}"
 }
 
@@ -84,7 +82,7 @@ POST {{baseUrl}}/api/auth/token/
 Content-Type: application/json
 
 {
-    "email": "{{email}}",
+    "identifier": "{{email}}",
     "password": "wrongpassword"
 }
 
@@ -95,13 +93,11 @@ Content-Type: application/json
 ### 3. TOKEN REFRESH
 ### ============================================================
 
-### 3a. Refresh access token (paste refresh token into @refreshToken above)
+### 3a. Refresh auth cookies
 POST {{baseUrl}}/api/auth/token/refresh/
 Content-Type: application/json
 
-{
-    "refresh": "{{refreshToken}}"
-}
+{}
 
 ###
 
@@ -112,13 +108,11 @@ Content-Type: application/json
 
 ### 4a. Get current user profile
 GET {{baseUrl}}/api/users/me/
-Authorization: Bearer {{accessToken}}
 
 ###
 
 ### 4b. Update current user profile
 PATCH {{baseUrl}}/api/users/me/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -141,7 +135,6 @@ GET {{baseUrl}}/api/users/me/
 ### 5a. Generate MFA secret and otpauth URI
 ### Copy the otpauth_uri into mfa_test.html to render the QR code
 GET {{baseUrl}}/api/auth/mfa/setup/
-Authorization: Bearer {{accessToken}}
 
 ###
 
@@ -157,7 +150,6 @@ GET {{baseUrl}}/api/auth/mfa/setup/
 
 ### 6a. Verify TOTP code (replace 000000 with code from authenticator app)
 POST {{baseUrl}}/api/auth/mfa/verify/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -168,7 +160,6 @@ Content-Type: application/json
 
 ### 6b. Verify — invalid code (expect 400)
 POST {{baseUrl}}/api/auth/mfa/verify/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -189,7 +180,6 @@ Content-Type: application/json
 
 ### 6d. Verify — code too short (expect 400)
 POST {{baseUrl}}/api/auth/mfa/verify/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -203,31 +193,25 @@ Content-Type: application/json
 ### 7. LOGOUT
 ### ============================================================
 
-### 7a. Logout — blacklists the refresh token (expect 205)
+### 7a. Logout — blacklists the refresh cookie (expect 205)
 POST {{baseUrl}}/api/auth/logout/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
-{
-    "refresh": "{{refreshToken}}"
-}
+{}
 
 ###
 
-### 7b. Logout — attempt to use blacklisted refresh token (expect 401)
+### 7b. Logout — attempt to use blacklisted refresh cookie (expect 401)
 ### Run this immediately after 7a to confirm blacklisting worked
 POST {{baseUrl}}/api/auth/token/refresh/
 Content-Type: application/json
 
-{
-    "refresh": "{{refreshToken}}"
-}
+{}
 
 ###
 
-### 7c. Logout — missing refresh token in body (expect 400)
+### 7c. Logout — no auth cookie (expect 401)
 POST {{baseUrl}}/api/auth/logout/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {}
@@ -238,12 +222,9 @@ Content-Type: application/json
 POST {{baseUrl}}/api/auth/logout/
 Content-Type: application/json
 
-{
-    "refresh": "{{refreshToken}}"
-}
+{}
 
 ###
-```
 
 ### ============================================================
 ### 8. CONTACTS
@@ -251,7 +232,6 @@ Content-Type: application/json
 
 ### 8a. Create a contact
 POST {{baseUrl}}/api/contacts/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -264,25 +244,21 @@ Content-Type: application/json
 
 ### 8b. List all contacts
 GET {{baseUrl}}/api/contacts/
-Authorization: Bearer {{accessToken}}
 
 ###
 
 ### 8c. Search contacts by name
 GET {{baseUrl}}/api/contacts/?name=john
-Authorization: Bearer {{accessToken}}
 
 ###
 
 ### 8d. Get single contact (replace 1 with real id)
 GET {{baseUrl}}/api/contacts/1/
-Authorization: Bearer {{accessToken}}
 
 ###
 
 ### 8e. Update a contact
 PATCH {{baseUrl}}/api/contacts/1/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -293,7 +269,6 @@ Content-Type: application/json
 
 ### 8f. Add a fact
 POST {{baseUrl}}/api/contacts/1/facts/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -304,13 +279,11 @@ Content-Type: application/json
 
 ### 8g. List facts
 GET {{baseUrl}}/api/contacts/1/facts/
-Authorization: Bearer {{accessToken}}
 
 ###
 
 ### 8h. Add an observation
 POST {{baseUrl}}/api/contacts/1/observations/
-Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
@@ -322,13 +295,11 @@ Content-Type: application/json
 
 ### 8i. List observations
 GET {{baseUrl}}/api/contacts/1/observations/
-Authorization: Bearer {{accessToken}}
 
 ###
 
 ### 8j. Delete a contact
 DELETE {{baseUrl}}/api/contacts/1/
-Authorization: Bearer {{accessToken}}
 
 ###
 

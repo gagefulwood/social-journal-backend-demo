@@ -1,9 +1,8 @@
 from django.contrib.auth import authenticate
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Users
+from .cookies import build_auth_metadata, role_for_user
 import re
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -81,21 +80,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 code='authorization',
             )
         
-        # Generates the token pair manually because the default auth flow was bypassed
         refresh = self.get_token(user)
-        data = {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-        }
+        data = build_auth_metadata(user)
+        data['refresh_token'] = str(refresh)
+        data['access_token'] = str(refresh.access_token)
         return data
     
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        try:
-            token['role'] = user.groups.first().name if user.groups.exists() else 'Standard User'
-        except Exception:
-            token['role'] = 'Standard User'
+        token['role'] = role_for_user(user)
         token['mfa_enabled'] = user.is_mfa_enabled
         token['mfa_pending'] = user.is_mfa_enabled
         return token
