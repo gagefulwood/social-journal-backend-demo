@@ -7,7 +7,7 @@ from .models import (
     ContextCategory,
     DetailCategoryTree,
     JournalTag,
-    NoteMarker,
+    ObservationMarker,
     MediaType,
 )
 
@@ -57,8 +57,8 @@ class JournalTagAdmin(admin.ModelAdmin):
     search_fields = ("tag_name",)
 
 
-@admin.register(NoteMarker)
-class NoteMarkerAdmin(admin.ModelAdmin):
+@admin.register(ObservationMarker)
+class ObservationMarkerAdmin(admin.ModelAdmin):
     list_display  = ['name', 'color_hex', 'user', 'is_system_default']
     list_filter   = ['is_system_default']
     search_fields = ['name']

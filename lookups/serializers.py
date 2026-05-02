@@ -7,7 +7,7 @@ from .models import (
     Mood,
     ContextCategory,
     DetailCategoryTree,
-    NoteMarker,
+    ObservationMarker,
     MediaType,
     JournalTag,
 )
@@ -72,9 +72,9 @@ class DetailCategorySerializer(serializers.ModelSerializer):
             children, many=True, context=self.context
         ).data
 
-class NoteMarkerSerializer(serializers.ModelSerializer):
+class ObservationMarkerSerializer(serializers.ModelSerializer):
     class Meta:
-        model = NoteMarker
+        model = ObservationMarker
         fields = ["id", "name", "color_hex", "icon_reference"]
         read_only_fields = ['is_system_default']
 

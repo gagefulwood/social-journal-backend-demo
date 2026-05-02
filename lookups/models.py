@@ -183,10 +183,10 @@ class JournalTag(models.Model):
     def __str__(self):
         return self.tag_name
     
-class NoteMarker(models.Model):
+class ObservationMarker(models.Model):
     '''
-    Lookup table for contact loose note marker styles.
-    Controls the visual appearance of note cards on the contact profile.
+    Lookup table for contact observation marker styles.
+    Controls the visual appearance of observation cards on the contact profile.
     System defaults seeded via data migration.
     Users can create custom markers tied to their user_id.
     '''
@@ -195,7 +195,7 @@ class NoteMarker(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='note_markers'
+        related_name='observation_markers'
     )
     name = models.CharField(max_length=100)
     color_hex = models.CharField(max_length=7)
@@ -205,7 +205,7 @@ class NoteMarker(models.Model):
     objects = LookupManager()
 
     class Meta:
-        db_table = 'note_markers'
+        db_table = 'observation_markers'
 
     def __str__(self):
         return self.name

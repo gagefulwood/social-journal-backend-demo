@@ -6,7 +6,7 @@ from .models import (
     Mood,
     ContextCategory,
     DetailCategoryTree,
-    NoteMarker,
+    ObservationMarker,
     Occupation,
     EducationLevel,
     ClosenessScore,
@@ -18,7 +18,7 @@ from .serializers import (
     MoodSerializer,
     ContextCategorySerializer,
     DetailCategorySerializer,
-    NoteMarkerSerializer,
+    ObservationMarkerSerializer,
     OccupationSerializer,
     EducationLevelSerializer,
     ClosenessScoreSerializer,
@@ -87,16 +87,16 @@ class DetailCategoryViewSet(WritableLookupViewSet):
         )
 
 
-class NoteMarkerViewSet(WritableLookupViewSet):
-    serializer_class = NoteMarkerSerializer
+class ObservationMarkerViewSet(WritableLookupViewSet):
+    serializer_class = ObservationMarkerSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
-            return NoteMarker.objects.none()
-        return NoteMarker.objects.for_user(self.request.user)
+            return ObservationMarker.objects.none()
+        return ObservationMarker.objects.for_user(self.request.user)
 
 
 class OccupationViewSet(WritableLookupViewSet):

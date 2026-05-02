@@ -6,7 +6,7 @@ from lookups.models import (
     EducationLevel,
     ClosenessScore,
     DetailCategoryTree,
-    NoteMarker,
+    ObservationMarker,
 )
 
 class ContactManager(models.Manager):
@@ -102,7 +102,7 @@ class ContactPersonalDetail(models.Model):
 
 class ContactLooseNote(models.Model):
     '''
-    Freeform notes attached to a contact and styled by a NoteMarker.
+    Freeform notes attached to a contact and styled by an ObservationMarker.
     is_active allows soft-hiding notes without deleting them.
     unlike journal entries the loose notes are mutable.
     '''
@@ -112,7 +112,7 @@ class ContactLooseNote(models.Model):
         related_name='loose_notes'
     )
     marker = models.ForeignKey(
-        NoteMarker,
+        ObservationMarker,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

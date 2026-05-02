@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import Contact, ContactPersonalDetail, ContactLooseNote
-from lookups.models import Occupation, EducationLevel, NoteMarker
 from lookups.serializers import ClosenessScoreSerializer
 
 class ContactPersonalDetailSerializer(serializers.ModelSerializer):
