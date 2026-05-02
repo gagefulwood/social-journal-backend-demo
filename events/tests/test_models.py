@@ -5,7 +5,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from contacts.tests.factories import ContactFactory, UserFactory
-from events.models import Event, EventParticipant
+from events.models import (
+    EVENT_TIER_CHOICES,
+    EVENT_TIER_MILESTONE,
+    EVENT_TIER_ROUTINE,
+    Event,
+    EventParticipant,
+)
 from journals.models import Exercise, Log, Reflection
 
 from .factories import EventFactory, EventParticipantFactory
@@ -32,6 +38,22 @@ class EventModelTests(TestCase):
         event = EventFactory()
 
         self.assertFalse(event.journaled)
+
+    def test_new_field_defaults(self):
+        event = EventFactory()
+
+        self.assertIsNone(event.end_timestamp)
+        self.assertEqual(event.location_label, "")
+        self.assertEqual(event.tier, EVENT_TIER_ROUTINE)
+
+    def test_tier_choices_include_routine_and_milestone(self):
+        choices = dict(EVENT_TIER_CHOICES)
+
+        self.assertEqual(choices[EVENT_TIER_ROUTINE], "Routine")
+        self.assertEqual(choices[EVENT_TIER_MILESTONE], "Milestone")
+
+    def test_db_table_is_events(self):
+        self.assertEqual(Event._meta.db_table, "events")
 
     def test_journaled_is_true_with_log(self):
         event = EventFactory()

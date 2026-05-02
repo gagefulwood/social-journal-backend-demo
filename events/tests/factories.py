@@ -13,6 +13,9 @@ class EventFactory(DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     title = factory.Sequence(lambda n: f"Event {n}")
     event_timestamp = factory.LazyFunction(timezone.now)
+    end_timestamp = None
+    location_label = ""
+    tier = "routine"
     context_category = None
 
 

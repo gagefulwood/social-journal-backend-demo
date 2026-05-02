@@ -11,9 +11,16 @@ class EventAdmin(admin.ModelAdmin):
     Event admin with inline participants so all event data is 
     visible and editable from one page
     '''
-    list_display = ['title', 'user_email', 'event_timestamp', 'context_category']
-    search_fields = ['title', 'user__email']
-    list_filter = ['context_category__name']
+    list_display = [
+        'title',
+        'user_email',
+        'event_timestamp',
+        'end_timestamp',
+        'tier',
+        'context_category',
+    ]
+    search_fields = ['title', 'location_label', 'user__email']
+    list_filter = ['tier', 'context_category__name']
     inlines = [EventParticipantInline]
 
     def user_email(self, obj):

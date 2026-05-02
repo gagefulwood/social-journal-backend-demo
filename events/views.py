@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Event
+from .filters import EventFilter
 from .serializers import EventSerializer, EventListSerializer
 from core.pagination import StandardResultsPagination
 from core.permissions import IsOwner
@@ -11,14 +12,14 @@ class EventViewSet(ModelViewSet):
     '''
     POST /api/events/ -> Create a new event with optional participant contact IDs
     GET /api/events/ -> List authenticated user's events ordered by timestamp descending
-
-    Create and list only for Sprint 2 **
-    Retrieve, update, and delete added in Sprint 3 with full journal entry feature **
+    PATCH /api/events/{id}/ -> Update mutable event fields and replace participants
+    DELETE /api/events/{id}/ -> Delete an event and cascade participants/journals
     '''
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated, IsOwner]
     pagination_class = StandardResultsPagination
     filter_backends = [DjangoFilterBackend]
+    filterset_class = EventFilter
 
     http_method_names = [
         "get",
@@ -42,7 +43,12 @@ class EventViewSet(ModelViewSet):
             Event.objects
             .filter(user=self.request.user)
             .select_related("context_category")
-            .prefetch_related("participants__contact")
+            .prefetch_related(
+                "participants__contact",
+                "logs",
+                "reflections",
+                "exercises",
+            )
         )
 
     def perform_create(self, serializer):

@@ -4,6 +4,14 @@ from contacts.models import Contact
 from lookups.models import ContextCategory
 from django.utils import timezone
 
+EVENT_TIER_ROUTINE = 'routine'
+EVENT_TIER_MILESTONE = 'milestone'
+
+EVENT_TIER_CHOICES = [
+    (EVENT_TIER_ROUTINE, 'Routine'),
+    (EVENT_TIER_MILESTONE, 'Milestone'),
+]
+
 class EventManager(models.Manager):
     '''
     Custom django manager for Event model.
@@ -39,6 +47,13 @@ class Event(models.Model):
     ) 
     title = models.CharField(max_length=255)
     event_timestamp = models.DateTimeField()
+    end_timestamp = models.DateTimeField(null=True, blank=True)
+    location_label = models.CharField(max_length=255, blank=True)
+    tier = models.CharField(
+        max_length=20,
+        choices=EVENT_TIER_CHOICES,
+        default=EVENT_TIER_ROUTINE,
+    )
     context_category = models.ForeignKey(
         ContextCategory,
         null=True,
@@ -69,7 +84,7 @@ class EventParticipant(models.Model):
     Junction model links Events to Contacts
     Allows multiple contacts to be tagged to a single event.
     Deleting either (event or contact) cascades and deletes junction row.
-    RecalculateClosenessSignal runs on post_save for this model to update closeness of linked contact
+    Interaction metric signals run on save/delete for the linked contact.
     '''
     event = models.ForeignKey(
         Event, 
