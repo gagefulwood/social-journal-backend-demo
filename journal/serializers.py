@@ -1,10 +1,10 @@
 from rest_framework import serializers
 from .models import JournalEntry, Reflection
-from lookups.serializers import MoodSerializer, JournalTagSerializer
+from lookups.serializers import MoodSerializer, EntryTagSerializer
 
 class JournalEntryListSerializer(serializers.ModelSerializer):
     mood = MoodSerializer(read_only=True)
-    tags = JournalTagSerializer(many=True, read_only=True)
+    tags = EntryTagSerializer(many=True, read_only=True)
 
     class Meta:
         model = JournalEntry
@@ -13,7 +13,7 @@ class JournalEntryListSerializer(serializers.ModelSerializer):
 class JournalEntrySerializer(serializers.ModelSerializer):
     event_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     mood = MoodSerializer(read_only=True)
-    tags = JournalTagSerializer(many=True, read_only=True)
+    tags = EntryTagSerializer(many=True, read_only=True)
 
     class Meta:
         model = JournalEntry

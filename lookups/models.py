@@ -160,9 +160,9 @@ class FactCategory(models.Model):
     def __str__(self):
         return self.name
     
-class JournalTag(models.Model):
+class EntryTag(models.Model):
     """
-    User-defined or system-default tags that can be applied to journal entries.
+    User-defined or system-default tags that can be applied to entries.
     Follows the same is_system_default pattern as other lookup models.
     """
     user = models.ForeignKey(
@@ -170,7 +170,7 @@ class JournalTag(models.Model):
         on_delete=models.CASCADE,
         null=True, 
         blank=True,
-        related_name="journal_tags",
+        related_name="entry_tags",
     )
     tag_name = models.CharField(max_length=100)
     is_system_default = models.BooleanField(default=False)
@@ -178,7 +178,7 @@ class JournalTag(models.Model):
     objects = LookupManager()
 
     class Meta:
-        db_table = "journal_tags"
+        db_table = "entry_tags"
 
     def __str__(self):
         return self.tag_name

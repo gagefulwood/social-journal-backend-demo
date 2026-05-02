@@ -29,7 +29,7 @@ class JournalEntry(models.Model):
     entry_timestamp = models.DateTimeField(auto_now_add=True)
     is_immutable = models.BooleanField(default=False)
     tags = models.ManyToManyField(
-        'lookups.JournalTag', 
+        'lookups.EntryTag', 
         blank=True, 
         related_name="entries",
     )

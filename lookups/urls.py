@@ -8,7 +8,7 @@ from .views import (
     EducationLevelViewSet,
     ClosenessScoreViewSet, 
     MediaTypeViewSet, 
-    JournalTagViewSet,
+    EntryTagViewSet,
 )
 
 router = DefaultRouter()
@@ -20,6 +20,6 @@ router.register("occupations",        OccupationViewSet,      basename="occupati
 router.register("education-levels",   EducationLevelViewSet,  basename="education-level")
 router.register("closeness-scores",   ClosenessScoreViewSet,  basename="closeness-score")
 router.register("media-types",        MediaTypeViewSet,       basename="media-type")
-router.register("journal-tags",       JournalTagViewSet,      basename="journal-tag")
+router.register("entry-tags",         EntryTagViewSet,        basename="entry-tag")
 
 urlpatterns = router.urls

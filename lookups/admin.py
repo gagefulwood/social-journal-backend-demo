@@ -6,7 +6,7 @@ from .models import (
     Mood,
     ContextCategory,
     FactCategory,
-    JournalTag,
+    EntryTag,
     ObservationMarker,
     MediaType,
 )
@@ -51,8 +51,8 @@ class FactCategoryAdmin(admin.ModelAdmin):
     list_filter   = ['is_system_default']
     search_fields = ['name']
 
-@admin.register(JournalTag)
-class JournalTagAdmin(admin.ModelAdmin):
+@admin.register(EntryTag)
+class EntryTagAdmin(admin.ModelAdmin):
     list_display = ("tag_name", "user", "is_system_default")
     search_fields = ("tag_name",)
 

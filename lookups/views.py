@@ -11,7 +11,7 @@ from .models import (
     EducationLevel,
     ClosenessScore,
     MediaType,
-    JournalTag,
+    EntryTag,
 )
 
 from .serializers import (
@@ -23,7 +23,7 @@ from .serializers import (
     EducationLevelSerializer,
     ClosenessScoreSerializer,
     MediaTypeSerializer,
-    JournalTagSerializer,
+    EntryTagSerializer,
 )
 
 class WritableLookupViewSet(ModelViewSet):
@@ -147,13 +147,13 @@ class MediaTypeViewSet(ReadOnlyModelViewSet):
         return MediaType.objects.for_user(self.request.user)
 
 
-class JournalTagViewSet(WritableLookupViewSet):
-    serializer_class = JournalTagSerializer
+class EntryTagViewSet(WritableLookupViewSet):
+    serializer_class = EntryTagSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
-            return JournalTag.objects.none()
-        return JournalTag.objects.for_user(self.request.user)
+            return EntryTag.objects.none()
+        return EntryTag.objects.for_user(self.request.user)

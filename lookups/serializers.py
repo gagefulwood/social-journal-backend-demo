@@ -9,7 +9,7 @@ from .models import (
     FactCategory,
     ObservationMarker,
     MediaType,
-    JournalTag,
+    EntryTag,
 )
 
 class OccupationSerializer(serializers.ModelSerializer):
@@ -84,8 +84,8 @@ class MediaTypeSerializer(serializers.ModelSerializer):
         fields = ["id", "name"]
         read_only_fields = fields
 
-class JournalTagSerializer(serializers.ModelSerializer):
+class EntryTagSerializer(serializers.ModelSerializer):
     class Meta:
-        model = JournalTag
+        model = EntryTag
         fields = ["id", "tag_name", "is_system_default"]
         read_only_fields = ['is_system_default']
