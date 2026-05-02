@@ -35,8 +35,9 @@ class EventSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'title', 'event_timestamp',
             'context_category', 'participant_ids', 'participants',
+            'journaled',
         ]
-        read_only_fields = ['user', 'participants']
+        read_only_fields = ['user', 'participants', 'journaled']
 
     def create(self, validated_data):
         participant_contacts = validated_data.pop('participant_contacts', [])
@@ -59,6 +60,7 @@ class EventListSerializer(serializers.ModelSerializer):
             "event_timestamp",
             "context_category",
             "participant_count",
+            "journaled",
         ]
 
     def get_participant_count(self, obj):

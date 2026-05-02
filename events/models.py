@@ -51,6 +51,14 @@ class Event(models.Model):
     class Meta:
         db_table = 'events'
         ordering = ['-event_timestamp']
+
+    @property
+    def journaled(self):
+        return (
+            self.logs.exists()
+            or self.reflections.exists()
+            or self.exercises.exists()
+        )
     
     def __str__(self):
         return f'{self.title} ({self.event_timestamp: %Y-%m-%d})'
