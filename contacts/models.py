@@ -18,6 +18,14 @@ class ContactManager(models.Manager):
     def for_user(self, user):
         return self.get_queryset().filter(user=user, is_active=True)
 
+class ObservationManager(models.Manager):
+    '''
+    Custom manager for Observation.
+    for_user() scopes observations to contacts owned by the requesting user.
+    '''
+    def for_user(self, user):
+        return self.get_queryset().filter(contact__user=user)
+
 class Contact(models.Model):
     '''
     Core PRM model for contacts.
@@ -101,31 +109,33 @@ class Fact(models.Model):
     def __str__(self):
         return f'{self.contact} - {self.category}: {self.detail_value}'
 
-class ContactLooseNote(models.Model):
+class Observation(models.Model):
     '''
-    Freeform notes attached to a contact and styled by an ObservationMarker.
-    is_active allows soft-hiding notes without deleting them.
-    unlike journal entries the loose notes are mutable.
+    Freeform observation attached to a contact and styled by an ObservationMarker.
+    is_active allows soft-hiding observations without deleting them.
+    Unlike journal entries, observations are mutable.
     '''
     contact = models.ForeignKey(
         Contact,
         on_delete=models.CASCADE,
-        related_name='loose_notes'
+        related_name='observations'
     )
     marker = models.ForeignKey(
         ObservationMarker,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='notes'
+        related_name='observations'
     )
     body = models.TextField()
     created_timestamp = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
+    objects = ObservationManager()
+
     class Meta:
-        db_table = 'contact_loose_notes'
+        db_table = 'observations'
         ordering = ['-created_timestamp']
     
     def __str__(self):
-        return f'Note for {self.contact} - {self.created_timestamp:%Y-%m-%d}'
+        return f'Observation for {self.contact} - {self.created_timestamp:%Y-%m-%d}'

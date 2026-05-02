@@ -1,6 +1,6 @@
 import django_filters
 from django.db.models import Q
-from .models import Contact
+from .models import Contact, Observation
 
 class ContactFilter(django_filters.FilterSet):
     '''
@@ -16,3 +16,11 @@ class ContactFilter(django_filters.FilterSet):
     class Meta:
         model = Contact
         fields = ['occupation', 'closeness_score']
+
+class ObservationFilter(django_filters.FilterSet):
+    '''
+    FilterSet for contact observations.
+    '''
+    class Meta:
+        model = Observation
+        fields = ['marker', 'is_active']

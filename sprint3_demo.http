@@ -308,8 +308,8 @@ Authorization: Bearer {{accessToken}}
 
 ###
 
-### 8h. Add a loose note
-POST {{baseUrl}}/api/contacts/1/notes/
+### 8h. Add an observation
+POST {{baseUrl}}/api/contacts/1/observations/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -320,8 +320,8 @@ Content-Type: application/json
 
 ###
 
-### 8i. List loose notes
-GET {{baseUrl}}/api/contacts/1/notes/
+### 8i. List observations
+GET {{baseUrl}}/api/contacts/1/observations/
 Authorization: Bearer {{accessToken}}
 
 ###

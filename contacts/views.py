@@ -3,14 +3,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Contact, Fact, ContactLooseNote
+from .models import Contact, Fact, Observation
 from .serializers import (
     ContactSerializer,
     ContactListSerializer,
     FactSerializer,
-    ContactLooseNoteSerializer,
+    ObservationSerializer,
 )
-from .filters import ContactFilter
+from .filters import ContactFilter, ObservationFilter
 from core.permissions import IsOwner
 from core.pagination import StandardResultsPagination
 
@@ -67,23 +67,24 @@ class FactViewSet(viewsets.ModelViewSet):
         )
         serializer.save(contact=contact)
 
-class ContactLooseNoteViewSet(viewsets.ModelViewSet):
+class ObservationViewSet(viewsets.ModelViewSet):
     '''
-    GET /api/contacts/{contact_id}/notes/
-    POST /api/contacts/{contact_id}/notes/
-    PATCH /api/contacts/{contac_id}/notes/{id}/
-    DELETE /api/contacts/{contact_id}/notes/{id}/
+    GET /api/contacts/{contact_id}/observations/
+    POST /api/contacts/{contact_id}/observations/
+    PATCH /api/contacts/{contact_id}/observations/{id}/
+    DELETE /api/contacts/{contact_id}/observations/{id}/
     '''
-    serializer_class = ContactLooseNoteSerializer
+    serializer_class = ObservationSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ObservationFilter
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
-            return ContactLooseNote.objects.none()
-        return ContactLooseNote.objects.filter(
-            contact_id=self.kwargs['contact_pk'],
-            contact__user=self.request.user,
+            return Observation.objects.none()
+        return Observation.objects.for_user(self.request.user).filter(
+            contact_id=self.kwargs['contact_pk']
         )
     
     def perform_create(self, serializer):

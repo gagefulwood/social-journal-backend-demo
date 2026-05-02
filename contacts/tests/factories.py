@@ -1,7 +1,7 @@
 import factory
 from factory.django import DjangoModelFactory
 
-from contacts.models import Contact
+from contacts.models import Contact, Observation
 from users.models import Users
 
 
@@ -33,4 +33,14 @@ class ContactFactory(DjangoModelFactory):
     last_name = "Person"
     email = factory.Sequence(lambda n: f"contact{n}@example.com")
     phone_number = ""
+    is_active = True
+
+
+class ObservationFactory(DjangoModelFactory):
+    class Meta:
+        model = Observation
+
+    contact = factory.SubFactory(ContactFactory)
+    marker = None
+    body = factory.Sequence(lambda n: f"Observation body {n}")
     is_active = True

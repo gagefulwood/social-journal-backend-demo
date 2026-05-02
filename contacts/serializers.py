@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Contact, Fact, ContactLooseNote
+from .models import Contact, Fact, Observation
 from lookups.serializers import ClosenessScoreSerializer
 
 class FactSerializer(serializers.ModelSerializer):
@@ -14,14 +14,14 @@ class FactSerializer(serializers.ModelSerializer):
         fields = ['id', 'contact', 'category', 'detail_value']
         read_only_fields = ['contact']
 
-class ContactLooseNoteSerializer(serializers.ModelSerializer):
+class ObservationSerializer(serializers.ModelSerializer):
     '''
-    Full CRUD serializer for ContactLooseNote
-    Used by ContactLooseNoteViewSet nested under /api/contacts/{id}/notes/
+    Full CRUD serializer for Observation.
+    Used by ObservationViewSet nested under /api/contacts/{id}/observations/
     contact_id is set automatically from the URL kwarg in the ViewSet
     '''
     class Meta:
-        model = ContactLooseNote
+        model = Observation
         fields = ['id', 'contact', 'marker', 'body', 'created_timestamp', 'is_active']
         read_only_fields = ['contact', 'created_timestamp']
 
