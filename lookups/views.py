@@ -130,7 +130,7 @@ class MediaTypeViewSet(ReadOnlyModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return MediaType.objects.none()
-        return MediaType.objects.for_user(self.request.user)
+        return MediaType.objects.filter(is_system_default=True)
 
 
 class EntryTagViewSet(WritableLookupViewSet):
