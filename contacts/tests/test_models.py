@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from contacts.models import Contact
+from lookups.models import Relation
 
 from .factories import ContactFactory, UserFactory
 
@@ -22,6 +23,7 @@ class ContactModelTests(TestCase):
             "birthday",
             "first_met_date",
             "occupation",
+            "relation",
             "custom_occupation",
             "company",
             "education_level",
@@ -64,3 +66,12 @@ class ContactModelTests(TestCase):
 
     def test_db_table_is_contacts(self):
         self.assertEqual(Contact._meta.db_table, "contacts")
+
+    def test_deleting_relation_sets_contact_relation_to_null(self):
+        relation = Relation.objects.create(name="Friend", is_system_default=True)
+        contact = ContactFactory(relation=relation)
+
+        relation.delete()
+
+        contact.refresh_from_db()
+        self.assertIsNone(contact.relation)

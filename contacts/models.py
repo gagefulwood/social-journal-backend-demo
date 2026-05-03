@@ -8,6 +8,7 @@ from users.models import Users
 from lookups.models import (
     Occupation,
     EducationLevel,
+    Relation,
     FactCategory,
     ObservationMarker,
 )
@@ -51,6 +52,13 @@ class Contact(models.Model):
 
     occupation = models.ForeignKey(
         Occupation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contacts'
+    )
+    relation = models.ForeignKey(
+        Relation,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

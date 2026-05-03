@@ -61,6 +61,30 @@ class EducationLevel(models.Model):
 
     def __str__(self):
         return self.name
+
+class Relation(models.Model):
+    '''
+    Lookup table for how a contact relates to the requesting user.
+    System defaults are seeded via data migration.
+    Users can create custom relations tied to their user_id in a later UI pass.
+    '''
+    user = models.ForeignKey(
+        Users,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='relations'
+    )
+    name = models.CharField(max_length=100)
+    is_system_default = models.BooleanField(default=False)
+
+    objects = LookupManager()
+
+    class Meta:
+        db_table = 'relations'
+
+    def __str__(self):
+        return self.name
     
 class Mood(models.Model):
     '''

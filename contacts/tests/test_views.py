@@ -6,6 +6,7 @@ from django.test import TestCase
 
 from contacts.models import Contact
 from contacts.filters import ContactFilter
+from lookups.models import Occupation, Relation
 from media.tests.factories import MediaAssetFactory
 
 from .factories import ContactFactory, UserFactory
@@ -28,6 +29,8 @@ class ContactViewSetTests(TestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(len(response.data["results"]), 1)
         self.assertEqual(response.data["results"][0]["id"], owned_contact.id)
+        self.assertIsNone(response.data["results"][0]["relation_name"])
+        self.assertIsNone(response.data["results"][0]["occupation_name"])
 
     def test_retrieve_returns_404_for_other_users_contact(self):
         other_contact = ContactFactory(user=self.other_user)
@@ -95,6 +98,122 @@ class ContactViewSetTests(TestCase):
 
     def test_filter_no_longer_exposes_closeness_score(self):
         self.assertNotIn("closeness_score", ContactFilter.get_filters())
+
+    def test_create_sets_relation(self):
+        relation = Relation.objects.create(name="Friend", is_system_default=True)
+
+        response = self.client.post(
+            reverse("contact-list"),
+            {
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "relation": relation.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        contact = Contact.objects.get(id=response.data["id"])
+        self.assertEqual(contact.relation, relation)
+        self.assertEqual(response.data["relation"], relation.id)
+        self.assertEqual(response.data["relation_name"], "Friend")
+
+    def test_partial_update_sets_relation(self):
+        contact = ContactFactory(user=self.user)
+        relation = Relation.objects.create(name="Coworker", is_system_default=True)
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"relation": relation.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        contact.refresh_from_db()
+        self.assertEqual(contact.relation, relation)
+        self.assertEqual(response.data["relation"], relation.id)
+        self.assertEqual(response.data["relation_name"], "Coworker")
+
+    def test_partial_update_clears_relation(self):
+        relation = Relation.objects.create(name="Friend", is_system_default=True)
+        contact = ContactFactory(user=self.user, relation=relation)
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"relation": None},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        contact.refresh_from_db()
+        self.assertIsNone(contact.relation)
+        self.assertIsNone(response.data["relation"])
+
+    def test_partial_update_rejects_other_users_relation(self):
+        contact = ContactFactory(user=self.user)
+        private_relation = Relation.objects.create(
+            user=self.other_user,
+            name="Private",
+        )
+
+        response = self.client.patch(
+            reverse("contact-detail", args=[contact.id]),
+            {"relation": private_relation.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        contact.refresh_from_db()
+        self.assertIsNone(contact.relation)
+
+    def test_detail_includes_relation_and_occupation_display_names(self):
+        relation = Relation.objects.create(name="Neighbor", is_system_default=True)
+        occupation = Occupation.objects.create(name="Designer", is_system_default=True)
+        contact = ContactFactory(
+            user=self.user,
+            relation=relation,
+            occupation=occupation,
+        )
+
+        response = self.client.get(reverse("contact-detail", args=[contact.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["relation"], relation.id)
+        self.assertEqual(response.data["relation_name"], "Neighbor")
+        self.assertEqual(response.data["occupation"], occupation.id)
+        self.assertEqual(response.data["occupation_name"], "Designer")
+
+    def test_list_includes_relation_and_occupation_display_names(self):
+        relation = Relation.objects.create(name="Classmate", is_system_default=True)
+        occupation = Occupation.objects.create(name="Engineer", is_system_default=True)
+        contact = ContactFactory(
+            user=self.user,
+            relation=relation,
+            occupation=occupation,
+        )
+
+        response = self.client.get(reverse("contact-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result = response.data["results"][0]
+        self.assertEqual(result["id"], contact.id)
+        self.assertEqual(result["relation"], relation.id)
+        self.assertEqual(result["relation_name"], "Classmate")
+        self.assertEqual(result["occupation"], occupation.id)
+        self.assertEqual(result["occupation_name"], "Engineer")
+
+    def test_filter_by_relation(self):
+        friend = Relation.objects.create(name="Friend", is_system_default=True)
+        coworker = Relation.objects.create(name="Coworker", is_system_default=True)
+        included = ContactFactory(user=self.user, relation=friend)
+        ContactFactory(user=self.user, relation=coworker)
+        ContactFactory(user=self.other_user, relation=friend)
+
+        response = self.client.get(reverse("contact-list"), {"relation": friend.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        contact_ids = {contact["id"] for contact in response.data["results"]}
+        self.assertEqual(contact_ids, {included.id})
 
     def test_partial_update_sets_profile_picture_owned_by_user(self):
         contact = ContactFactory(user=self.user)

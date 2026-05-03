@@ -15,7 +15,7 @@ class ContactFilter(django_filters.FilterSet):
     
     class Meta:
         model = Contact
-        fields = ['occupation']
+        fields = ['occupation', 'relation']
 
 class ObservationFilter(django_filters.FilterSet):
     '''

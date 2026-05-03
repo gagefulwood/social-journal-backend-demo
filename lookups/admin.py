@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     Occupation,
     EducationLevel,
+    Relation,
     Mood,
     ContextCategory,
     FactCategory,
@@ -22,6 +23,13 @@ class OccupationAdmin(admin.ModelAdmin):
 class EducationLevelAdmin(admin.ModelAdmin):
     list_display  = ['name', 'user', 'is_system_default']
     list_filter   = ['is_system_default']
+    search_fields = ['name']
+
+
+@admin.register(Relation)
+class RelationAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'is_system_default']
+    list_filter = ['is_system_default']
     search_fields = ['name']
 
 

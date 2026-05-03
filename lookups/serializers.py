@@ -3,6 +3,7 @@ from django.db.models import Q
 from .models import (
     Occupation,
     EducationLevel,
+    Relation,
     Mood,
     ContextCategory,
     FactCategory,
@@ -20,6 +21,12 @@ class OccupationSerializer(serializers.ModelSerializer):
 class EducationLevelSerializer(serializers.ModelSerializer):
     class Meta:
         model = EducationLevel
+        fields = ["id", "name", "is_system_default"]
+        read_only_fields = ['is_system_default']
+
+class RelationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Relation
         fields = ["id", "name", "is_system_default"]
         read_only_fields = ['is_system_default']
 

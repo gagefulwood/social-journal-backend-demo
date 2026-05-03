@@ -36,15 +36,24 @@ class ContactListSerializer(serializers.ModelSerializer):
     Used by ContactVIewSet for GET /api/contacts/
     '''
     profile_picture = MediaAssetListSerializer(read_only=True)
+    relation_name = serializers.SerializerMethodField()
+    occupation_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Contact
         fields = [
             'id', 'first_name', 'last_name', 'email',
-            'phone_number', 'profile_picture',
+            'phone_number', 'relation', 'relation_name',
+            'occupation', 'occupation_name', 'profile_picture',
             'interaction_frequency_score', 'relationship_trend',
             'connection_strength',
         ]
+
+    def get_relation_name(self, obj):
+        return obj.relation.name if obj.relation else None
+
+    def get_occupation_name(self, obj):
+        return obj.occupation.name if obj.occupation else None
 
 class ContactSerializer(serializers.ModelSerializer):
     '''
@@ -53,6 +62,8 @@ class ContactSerializer(serializers.ModelSerializer):
     user is set automatically from request.user in the ViewSet never request body.
     '''
     profile_picture = MediaAssetListSerializer(read_only=True)
+    relation_name = serializers.SerializerMethodField()
+    occupation_name = serializers.SerializerMethodField()
     profile_picture_id = serializers.PrimaryKeyRelatedField(
         queryset=MediaAsset.objects.all(),
         source='profile_picture',
@@ -66,7 +77,8 @@ class ContactSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'first_name', 'middle_name', 'last_name',
             'email', 'phone_number', 'address', 'birthday', 'first_met_date',
-            'occupation', 'custom_occupation', 'company',
+            'relation', 'relation_name',
+            'occupation', 'occupation_name', 'custom_occupation', 'company',
             'education_level', 'custom_education_level', 'school',
             'profile_picture', 'profile_picture_id',
             'interaction_frequency_score',
@@ -75,6 +87,8 @@ class ContactSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'user',
+            'relation_name',
+            'occupation_name',
             'interaction_frequency_score',
             'relationship_trend',
             'interaction_diversity_score',
@@ -83,10 +97,33 @@ class ContactSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        if 'relation' in attrs:
+            self._validate_relation(attrs.get('relation'))
         profile_picture = attrs.get('profile_picture')
         if 'profile_picture' in attrs:
             self._validate_profile_picture(profile_picture)
         return attrs
+
+    def get_relation_name(self, obj):
+        return obj.relation.name if obj.relation else None
+
+    def get_occupation_name(self, obj):
+        return obj.occupation.name if obj.occupation else None
+
+    def _validate_relation(self, relation):
+        if relation is None:
+            return relation
+
+        request = self.context.get('request')
+        if not request:
+            raise serializers.ValidationError(
+                'Select a relation visible to the requesting user.'
+            )
+        if not relation.is_system_default and relation.user_id != request.user.id:
+            raise serializers.ValidationError(
+                'Select a relation visible to the requesting user.'
+            )
+        return relation
 
     def _validate_profile_picture(self, profile_picture):
         if profile_picture is None:

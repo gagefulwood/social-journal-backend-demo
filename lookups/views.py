@@ -9,6 +9,7 @@ from .models import (
     ObservationMarker,
     Occupation,
     EducationLevel,
+    Relation,
     MediaType,
     EntryTag,
 )
@@ -20,6 +21,7 @@ from .serializers import (
     ObservationMarkerSerializer,
     OccupationSerializer,
     EducationLevelSerializer,
+    RelationSerializer,
     MediaTypeSerializer,
     EntryTagSerializer,
 )
@@ -119,6 +121,18 @@ class EducationLevelViewSet(WritableLookupViewSet):
         if getattr(self, 'swagger_fake_view', False):
             return EducationLevel.objects.none()
         return EducationLevel.objects.for_user(self.request.user)
+
+
+class RelationViewSet(WritableLookupViewSet):
+    serializer_class = RelationSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    http_method_names = ["get", "head", "options"]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Relation.objects.none()
+        return Relation.objects.for_user(self.request.user)
 
 
 class MediaTypeViewSet(ReadOnlyModelViewSet):
