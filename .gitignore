@@ -9,7 +9,15 @@ __pycache__/
 *.log
 local_settings.py
 db.sqlite3
-media/
+media/*
+# git fix for media app
+!media/**/*.py
+!media/migrations/
+!media/urls.py
+!media/views.py
+!media/tests/
+!media/tests/**
+
 
 # IDE
 .vscode/
