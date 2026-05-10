@@ -243,6 +243,25 @@ class EventViewSetTests(TestCase):
         event_ids = {event["id"] for event in response.data["results"]}
         self.assertEqual(event_ids, {matching_event.id})
 
+    def test_filter_by_title(self):
+        matching_event = EventFactory(
+            user=self.user,
+            title="Dinner with Ada",
+            tier="milestone",
+        )
+        EventFactory(user=self.user, title="Morning coffee", tier="milestone")
+        EventFactory(user=self.user, title="Dinner routine", tier="routine")
+        EventFactory(user=self.other_user, title="Dinner with Grace", tier="milestone")
+
+        response = self.client.get(
+            reverse("event-list"),
+            {"title": "dinner", "tier": "milestone"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        event_ids = {event["id"] for event in response.data["results"]}
+        self.assertEqual(event_ids, {matching_event.id})
+
     def test_filter_by_journaled(self):
         journaled_event = EventFactory(user=self.user)
         EventFactory(user=self.user)

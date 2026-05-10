@@ -76,6 +76,7 @@ class Reflection(JournalBase):
     '''
     Structured reflection entry. Variant prose fields live in data.
     '''
+    title = models.CharField(max_length=255)
     subtype = models.CharField(max_length=50, default='standard')
     clarity_check = models.CharField(max_length=255, blank=True)
     data = models.JSONField(default=dict, blank=True)
@@ -91,13 +92,14 @@ class Reflection(JournalBase):
         ]
 
     def __str__(self):
-        return f'Reflection for {self.event}'
+        return self.title
 
 
 class Exercise(JournalBase):
     '''
     Closed-loop exercise entry with pre/post measurements.
     '''
+    title = models.CharField(max_length=255)
     subtype = models.CharField(max_length=50, default='standard')
     pre_measurement = models.IntegerField()
     post_measurement = models.IntegerField()
@@ -117,7 +119,7 @@ class Exercise(JournalBase):
         return self.post_measurement - self.pre_measurement
 
     def __str__(self):
-        return f'Exercise for {self.event}'
+        return self.title
 
 
 class ExerciseStep(models.Model):

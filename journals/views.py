@@ -150,6 +150,7 @@ class JournalFeedView(generics.GenericAPIView):
         event_id = request.query_params.get('event')
         created_after = request.query_params.get('created_after')
         created_before = request.query_params.get('created_before')
+        title = request.query_params.get('title')
         if event_id:
             queryset = queryset.filter(event_id=event_id)
         if created_after:
@@ -160,6 +161,8 @@ class JournalFeedView(generics.GenericAPIView):
             queryset = queryset.filter(
                 created_timestamp__lte=parse_datetime(created_before)
             )
+        if title:
+            queryset = queryset.filter(title__icontains=title)
         return queryset
 
     def _filtered_log_queryset(self, request):
@@ -210,7 +213,7 @@ class JournalFeedView(generics.GenericAPIView):
                 'id': reflection.id,
                 'kind': 'reflection',
                 'event': reflection.event_id,
-                'label': reflection.subtype,
+                'label': reflection.title,
                 'created_timestamp': reflection.created_timestamp,
                 'updated_timestamp': reflection.updated_timestamp,
                 'summary': {
@@ -227,7 +230,7 @@ class JournalFeedView(generics.GenericAPIView):
                 'id': exercise.id,
                 'kind': 'exercise',
                 'event': exercise.event_id,
-                'label': exercise.subtype,
+                'label': exercise.title,
                 'created_timestamp': exercise.created_timestamp,
                 'updated_timestamp': exercise.updated_timestamp,
                 'summary': {

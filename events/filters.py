@@ -9,6 +9,7 @@ from .models import Event
 
 
 class EventFilter(django_filters.FilterSet):
+    title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
     event_after = django_filters.CharFilter(method='filter_event_after')
     event_before = django_filters.CharFilter(method='filter_event_before')
     participants = django_filters.CharFilter(method='filter_participants')
@@ -19,6 +20,7 @@ class EventFilter(django_filters.FilterSet):
         fields = [
             'event_after',
             'event_before',
+            'title',
             'tier',
             'context_category',
             'participants',

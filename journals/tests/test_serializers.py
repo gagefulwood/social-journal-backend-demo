@@ -38,6 +38,7 @@ class JournalSerializerTests(TestCase):
         serializer = ExerciseSerializer(
             data={
                 'event': event.id,
+                'title': 'Breathing exercise',
                 'pre_measurement': 10,
                 'post_measurement': 4,
                 'steps': [
@@ -65,6 +66,7 @@ class JournalSerializerTests(TestCase):
         exercise = Exercise.objects.create(
             user=user,
             event=event,
+            title='Existing exercise',
             pre_measurement=1,
             post_measurement=2,
         )

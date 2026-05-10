@@ -98,6 +98,7 @@ class EventSerializer(serializers.ModelSerializer):
         return {
             'id': reflection.id,
             'kind': 'reflection',
+            'title': reflection.title,
             'subtype': reflection.subtype,
             'clarity_check': reflection.clarity_check,
             'created_timestamp': reflection.created_timestamp,
@@ -110,6 +111,7 @@ class EventSerializer(serializers.ModelSerializer):
         return {
             'id': exercise.id,
             'kind': 'exercise',
+            'title': exercise.title,
             'subtype': exercise.subtype,
             'measurement_delta': exercise.measurement_delta,
             'created_timestamp': exercise.created_timestamp,

@@ -68,7 +68,11 @@ class EventModelTests(TestCase):
 
     def test_journaled_is_true_with_reflection(self):
         event = EventFactory()
-        Reflection.objects.create(user=event.user, event=event)
+        Reflection.objects.create(
+            user=event.user,
+            event=event,
+            title="Reflection",
+        )
 
         self.assertTrue(event.journaled)
 
@@ -77,6 +81,7 @@ class EventModelTests(TestCase):
         Exercise.objects.create(
             user=event.user,
             event=event,
+            title="Exercise",
             pre_measurement=1,
             post_measurement=2,
         )

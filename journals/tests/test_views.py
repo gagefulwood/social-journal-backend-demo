@@ -78,6 +78,7 @@ class JournalKindViewSetTests(TestCase):
             reverse('journal-reflection-list'),
             {
                 'event': self.other_event.id,
+                'title': 'Other event reflection',
                 'clarity_check': 'Clear',
                 'data': {'prompt': 'What happened?'},
             },
@@ -108,6 +109,7 @@ class JournalKindViewSetTests(TestCase):
             reverse('journal-reflection-list'),
             {
                 'event': self.event.id,
+                'title': 'Reflection',
                 'clarity_check': 'Clear',
                 'data': {'response': 'Something shifted.'},
             },
@@ -117,6 +119,7 @@ class JournalKindViewSetTests(TestCase):
             reverse('journal-exercise-list'),
             {
                 'event': self.event.id,
+                'title': 'Exercise',
                 'pre_measurement': 2,
                 'post_measurement': 5,
                 'steps': [
@@ -134,6 +137,41 @@ class JournalKindViewSetTests(TestCase):
         self.assertEqual(exercise_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Reflection.objects.count(), 1)
         self.assertEqual(Exercise.objects.count(), 1)
+
+    def test_kind_endpoints_filter_by_title(self):
+        matching_log = LogFactory(user=self.user, title='Dinner notes')
+        LogFactory(user=self.user, title='Morning notes')
+        LogFactory(user=self.other_user, title='Dinner private')
+        matching_reflection = ReflectionFactory(user=self.user, title='Dinner reflection')
+        ReflectionFactory(user=self.user, title='Walk reflection')
+        matching_exercise = ExerciseFactory(user=self.user, title='Dinner reframe')
+        ExerciseFactory(user=self.user, title='Breathing practice')
+
+        log_response = self.client.get(reverse('journal-log-list'), {'title': 'dinner'})
+        reflection_response = self.client.get(
+            reverse('journal-reflection-list'),
+            {'title': 'DINNER'},
+        )
+        exercise_response = self.client.get(
+            reverse('journal-exercise-list'),
+            {'title': 'Dinner'},
+        )
+
+        self.assertEqual(log_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {item['id'] for item in log_response.data['results']},
+            {str(matching_log.id)},
+        )
+        self.assertEqual(reflection_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {item['id'] for item in reflection_response.data['results']},
+            {str(matching_reflection.id)},
+        )
+        self.assertEqual(exercise_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {item['id'] for item in exercise_response.data['results']},
+            {str(matching_exercise.id)},
+        )
 
     def test_old_journal_entry_routes_are_absent(self):
         with self.assertRaises(NoReverseMatch):
@@ -156,8 +194,8 @@ class JournalFeedViewTests(TestCase):
 
     def test_combined_feed_returns_kind_discriminated_ordered_results(self):
         log = LogFactory(user=self.user, event=self.event, title='Old log')
-        reflection = ReflectionFactory(user=self.user)
-        exercise = ExerciseFactory(user=self.user)
+        reflection = ReflectionFactory(user=self.user, title='Middle reflection')
+        exercise = ExerciseFactory(user=self.user, title='Recent exercise')
         LogFactory(user=self.other_user)
         now = timezone.now()
         Log.objects.filter(pk=log.pk).update(created_timestamp=now - timedelta(days=2))
@@ -172,6 +210,8 @@ class JournalFeedViewTests(TestCase):
         self.assertEqual(response.data['count'], 3)
         kinds = [item['kind'] for item in response.data['results']]
         self.assertEqual(kinds, ['exercise', 'reflection', 'log'])
+        labels = [item['label'] for item in response.data['results']]
+        self.assertEqual(labels, ['Recent exercise', 'Middle reflection', 'Old log'])
 
     def test_combined_feed_filters_by_kind_and_event(self):
         log = LogFactory(user=self.user, event=self.event)
@@ -186,6 +226,44 @@ class JournalFeedViewTests(TestCase):
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['id'], str(log.id))
         self.assertEqual(response.data['results'][0]['kind'], 'log')
+
+    def test_combined_feed_filters_all_kinds_by_title(self):
+        log = LogFactory(user=self.user, event=self.event, title='Dinner log')
+        reflection = ReflectionFactory(
+            user=self.user,
+            event=EventFactory(user=self.user),
+            title='Dinner reflection',
+        )
+        exercise = ExerciseFactory(
+            user=self.user,
+            event=EventFactory(user=self.user),
+            title='Dinner exercise',
+        )
+        LogFactory(user=self.user, title='Morning log')
+        ReflectionFactory(user=self.other_user, title='Dinner private')
+
+        response = self.client.get(reverse('journal-feed'), {'title': 'dinner'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result_ids = {item['id'] for item in response.data['results']}
+        self.assertEqual(result_ids, {str(log.id), str(reflection.id), str(exercise.id)})
+        self.assertEqual(
+            {item['label'] for item in response.data['results']},
+            {'Dinner log', 'Dinner reflection', 'Dinner exercise'},
+        )
+
+    def test_combined_feed_title_filter_composes_with_kind(self):
+        reflection = ReflectionFactory(user=self.user, title='Dinner reflection')
+        ExerciseFactory(user=self.user, title='Dinner exercise')
+
+        response = self.client.get(
+            reverse('journal-feed'),
+            {'kind': 'reflection', 'title': 'dinner'},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['id'], str(reflection.id))
 
     def test_combined_feed_is_read_only(self):
         response = self.client.post(reverse('journal-feed'), {}, format='json')

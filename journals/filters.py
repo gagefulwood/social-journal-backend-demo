@@ -15,20 +15,25 @@ class JournalTimestampFilterSet(django_filters.FilterSet):
 
 
 class LogFilter(JournalTimestampFilterSet):
+    title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
     tags = django_filters.NumberFilter(field_name='tags__id')
 
     class Meta:
         model = Log
-        fields = ['event', 'mood', 'tags', 'created_after', 'created_before']
+        fields = ['event', 'title', 'mood', 'tags', 'created_after', 'created_before']
 
 
 class ReflectionFilter(JournalTimestampFilterSet):
+    title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
+
     class Meta:
         model = Reflection
-        fields = ['event', 'subtype', 'created_after', 'created_before']
+        fields = ['event', 'title', 'subtype', 'created_after', 'created_before']
 
 
 class ExerciseFilter(JournalTimestampFilterSet):
+    title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
+
     class Meta:
         model = Exercise
-        fields = ['event', 'subtype', 'created_after', 'created_before']
+        fields = ['event', 'title', 'subtype', 'created_after', 'created_before']

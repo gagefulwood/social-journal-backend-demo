@@ -31,16 +31,20 @@ class JournalModelTests(TestCase):
         self.assertEqual(str(log), 'Dinner notes')
 
     def test_reflection_defaults_and_str(self):
-        reflection = ReflectionFactory(subtype='standard')
+        reflection = ReflectionFactory(title='Dinner reflection', subtype='standard')
 
         self.assertEqual(reflection.subtype, 'standard')
-        self.assertIn('Reflection for', str(reflection))
+        self.assertEqual(str(reflection), 'Dinner reflection')
 
     def test_exercise_measurement_delta_and_str(self):
-        exercise = ExerciseFactory(pre_measurement=3, post_measurement=-1)
+        exercise = ExerciseFactory(
+            title='Breathing exercise',
+            pre_measurement=3,
+            post_measurement=-1,
+        )
 
         self.assertEqual(exercise.measurement_delta, -4)
-        self.assertIn('Exercise for', str(exercise))
+        self.assertEqual(str(exercise), 'Breathing exercise')
 
     def test_exercise_steps_order_by_display_order(self):
         exercise = ExerciseFactory()

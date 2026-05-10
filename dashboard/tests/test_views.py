@@ -176,11 +176,13 @@ class DashboardMVPWidgetTests(TestCase):
         reflection = Reflection.objects.create(
             user=self.user,
             event=today_event,
+            title="Today reflection",
             clarity_check="Clear",
         )
         old_exercise = Exercise.objects.create(
             user=self.user,
             event=old_event,
+            title="Old exercise",
             pre_measurement=1,
             post_measurement=2,
         )

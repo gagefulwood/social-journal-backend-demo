@@ -74,11 +74,13 @@ class EventSerializerTests(TestCase):
         reflection = Reflection.objects.create(
             user=event.user,
             event=event,
+            title="Reflection",
             clarity_check="Clear",
         )
         exercise = Exercise.objects.create(
             user=event.user,
             event=event,
+            title="Exercise",
             pre_measurement=3,
             post_measurement=8,
         )
@@ -87,9 +89,11 @@ class EventSerializerTests(TestCase):
 
         self.assertEqual(data["journals"]["reflection"]["id"], reflection.id)
         self.assertEqual(data["journals"]["reflection"]["kind"], "reflection")
+        self.assertEqual(data["journals"]["reflection"]["title"], "Reflection")
         self.assertEqual(data["journals"]["reflection"]["clarity_check"], "Clear")
         self.assertEqual(data["journals"]["exercise"]["id"], exercise.id)
         self.assertEqual(data["journals"]["exercise"]["kind"], "exercise")
+        self.assertEqual(data["journals"]["exercise"]["title"], "Exercise")
         self.assertEqual(data["journals"]["exercise"]["measurement_delta"], 5)
 
     def test_update_rejects_event_timestamp_change(self):

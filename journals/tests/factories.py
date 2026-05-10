@@ -51,6 +51,7 @@ class ReflectionFactory(DjangoModelFactory):
 
     user = factory.SubFactory(UserFactory)
     event = factory.SubFactory(EventFactory, user=factory.SelfAttribute('..user'))
+    title = factory.Sequence(lambda n: f'Reflection {n}')
     clarity_check = 'Clear'
     data = {'prompt': 'What happened?', 'response': 'A useful response.'}
 
@@ -61,6 +62,7 @@ class ExerciseFactory(DjangoModelFactory):
 
     user = factory.SubFactory(UserFactory)
     event = factory.SubFactory(EventFactory, user=factory.SelfAttribute('..user'))
+    title = factory.Sequence(lambda n: f'Exercise {n}')
     pre_measurement = 2
     post_measurement = 5
 
