@@ -56,18 +56,37 @@ class EventSerializerTests(TestCase):
         event = EventFactory()
         contact = ContactFactory(user=event.user, first_name="Ada")
         EventParticipant.objects.create(event=event, contact=contact)
-        log = Log.objects.create(user=event.user, event=event, title="Log", body="Body")
+        older_log = Log.objects.create(
+            user=event.user,
+            event=event,
+            title="Older Log",
+            body="Body",
+        )
+        newer_log = Log.objects.create(
+            user=event.user,
+            event=event,
+            title="Newer Log",
+            body="Body",
+        )
+        now = timezone.now()
+        Log.objects.filter(pk=older_log.pk).update(
+            created_timestamp=now - timezone.timedelta(days=1)
+        )
+        Log.objects.filter(pk=newer_log.pk).update(created_timestamp=now)
 
         data = EventSerializer(event).data
 
         self.assertTrue(data["journaled"])
         self.assertEqual(len(data["participants"]), 1)
         self.assertEqual(data["participants"][0]["contact"]["id"], contact.id)
-        self.assertEqual(data["journals"]["log"]["id"], log.id)
-        self.assertEqual(data["journals"]["log"]["kind"], "log")
-        self.assertEqual(data["journals"]["log"]["title"], "Log")
-        self.assertIsNone(data["journals"]["reflection"])
-        self.assertIsNone(data["journals"]["exercise"])
+        self.assertEqual(
+            [item["id"] for item in data["journals"]["logs"]],
+            [newer_log.id, older_log.id],
+        )
+        self.assertEqual(data["journals"]["logs"][0]["kind"], "log")
+        self.assertEqual(data["journals"]["logs"][0]["title"], "Newer Log")
+        self.assertEqual(data["journals"]["reflections"], [])
+        self.assertEqual(data["journals"]["exercises"], [])
 
     def test_serialized_detail_includes_reflection_and_exercise_summaries(self):
         event = EventFactory()
@@ -87,14 +106,17 @@ class EventSerializerTests(TestCase):
 
         data = EventSerializer(event).data
 
-        self.assertEqual(data["journals"]["reflection"]["id"], reflection.id)
-        self.assertEqual(data["journals"]["reflection"]["kind"], "reflection")
-        self.assertEqual(data["journals"]["reflection"]["title"], "Reflection")
-        self.assertEqual(data["journals"]["reflection"]["clarity_check"], "Clear")
-        self.assertEqual(data["journals"]["exercise"]["id"], exercise.id)
-        self.assertEqual(data["journals"]["exercise"]["kind"], "exercise")
-        self.assertEqual(data["journals"]["exercise"]["title"], "Exercise")
-        self.assertEqual(data["journals"]["exercise"]["measurement_delta"], 5)
+        self.assertEqual(data["journals"]["reflections"][0]["id"], reflection.id)
+        self.assertEqual(data["journals"]["reflections"][0]["kind"], "reflection")
+        self.assertEqual(data["journals"]["reflections"][0]["title"], "Reflection")
+        self.assertEqual(
+            data["journals"]["reflections"][0]["clarity_check"],
+            "Clear",
+        )
+        self.assertEqual(data["journals"]["exercises"][0]["id"], exercise.id)
+        self.assertEqual(data["journals"]["exercises"][0]["kind"], "exercise")
+        self.assertEqual(data["journals"]["exercises"][0]["title"], "Exercise")
+        self.assertEqual(data["journals"]["exercises"][0]["measurement_delta"], 5)
 
     def test_update_rejects_event_timestamp_change(self):
         event = EventFactory()

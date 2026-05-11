@@ -115,6 +115,43 @@ class ContactStatisticsServiceTests(TestCase):
         self.assertEqual(calculate_sentiment_profile([event]), {"veryhappy": 1})
         self.assertEqual(calculate_sentiment_score([event]), 100)
 
+    def test_sentiment_profile_counts_multiple_logs_on_same_event(self):
+        user = UserFactory()
+        event = Event.objects.create(
+            user=user,
+            title="Dinner",
+            event_timestamp=timezone.now(),
+        )
+        happy = Mood.objects.create(
+            user=user,
+            name="Happy",
+            emoji_icon="H",
+            polarity=1,
+        )
+        mixed = Mood.objects.create(
+            user=user,
+            name="Mixed",
+            emoji_icon="M",
+            polarity=0,
+        )
+        Log.objects.create(
+            user=user,
+            event=event,
+            title="Arrival",
+            body="Warm start.",
+            mood=happy,
+        )
+        Log.objects.create(
+            user=user,
+            event=event,
+            title="Later",
+            body="More complicated.",
+            mood=mixed,
+        )
+
+        self.assertEqual(calculate_sentiment_profile([event]), {"happy": 1, "mixed": 1})
+        self.assertEqual(calculate_sentiment_score([event]), 75)
+
     def test_custom_moods_default_to_neutral_sentiment(self):
         user = UserFactory()
         event = Event.objects.create(

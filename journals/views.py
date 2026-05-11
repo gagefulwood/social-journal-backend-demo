@@ -41,13 +41,11 @@ class JournalKindViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         event = self._validated_event(serializer)
-        self._validate_no_duplicate_event(event)
         serializer.save(user=self.request.user, event=event)
 
     def perform_update(self, serializer):
         event = serializer.validated_data.get('event', serializer.instance.event)
         self._validate_event_owner(event)
-        self._validate_no_duplicate_event(event, instance=serializer.instance)
         serializer.save()
 
     def _validated_event(self, serializer):
@@ -62,17 +60,6 @@ class JournalKindViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 'You do not have permission to add a journal entry to this event.'
             )
-
-    def _validate_no_duplicate_event(self, event, instance=None):
-        queryset = self.queryset_model.objects.for_user(self.request.user).filter(
-            event=event
-        )
-        if instance is not None:
-            queryset = queryset.exclude(pk=instance.pk)
-        if queryset.exists():
-            raise ValidationError({
-                'event': 'This event already has a journal entry of this kind.'
-            })
 
 
 class LogViewSet(JournalKindViewSet):

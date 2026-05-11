@@ -78,7 +78,7 @@ class EventViewSetTests(TestCase):
 
         self.assertEqual(journaled.status_code, status.HTTP_200_OK)
         self.assertTrue(journaled.data["journaled"])
-        self.assertEqual(journaled.data["journals"]["log"]["title"], "Log")
+        self.assertEqual(journaled.data["journals"]["logs"][0]["title"], "Log")
 
     def test_partial_update_allows_owner(self):
         event = EventFactory(user=self.user, title="Old")

@@ -72,18 +72,19 @@ class EventSerializer(serializers.ModelSerializer):
         return data
 
     def get_journals(self, obj):
-        log = obj.logs.first()
-        reflection = obj.reflections.first()
-        exercise = obj.exercises.first()
         return {
-            'log': self._log_summary(log),
-            'reflection': self._reflection_summary(reflection),
-            'exercise': self._exercise_summary(exercise),
+            'logs': [self._log_summary(log) for log in obj.logs.all()],
+            'reflections': [
+                self._reflection_summary(reflection)
+                for reflection in obj.reflections.all()
+            ],
+            'exercises': [
+                self._exercise_summary(exercise)
+                for exercise in obj.exercises.all()
+            ],
         }
 
     def _log_summary(self, log):
-        if log is None:
-            return None
         return {
             'id': log.id,
             'kind': 'log',
@@ -93,8 +94,6 @@ class EventSerializer(serializers.ModelSerializer):
         }
 
     def _reflection_summary(self, reflection):
-        if reflection is None:
-            return None
         return {
             'id': reflection.id,
             'kind': 'reflection',
@@ -106,8 +105,6 @@ class EventSerializer(serializers.ModelSerializer):
         }
 
     def _exercise_summary(self, exercise):
-        if exercise is None:
-            return None
         return {
             'id': exercise.id,
             'kind': 'exercise',

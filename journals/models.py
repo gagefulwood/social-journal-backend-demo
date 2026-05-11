@@ -61,12 +61,6 @@ class Log(JournalBase):
     class Meta:
         db_table = 'logs'
         ordering = ['-created_timestamp']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['user', 'event'],
-                name='unique_log_user_event',
-            ),
-        ]
 
     def __str__(self):
         return self.title
@@ -84,12 +78,6 @@ class Reflection(JournalBase):
     class Meta:
         db_table = 'reflections'
         ordering = ['-created_timestamp']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['user', 'event'],
-                name='unique_reflection_user_event',
-            ),
-        ]
 
     def __str__(self):
         return self.title
@@ -107,12 +95,6 @@ class Exercise(JournalBase):
     class Meta:
         db_table = 'exercises'
         ordering = ['-created_timestamp']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['user', 'event'],
-                name='unique_exercise_user_event',
-            ),
-        ]
 
     @property
     def measurement_delta(self):

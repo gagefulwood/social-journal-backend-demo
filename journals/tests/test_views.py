@@ -87,20 +87,32 @@ class JournalKindViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_duplicate_same_kind_same_event_is_rejected(self):
-        LogFactory(user=self.user, event=self.event)
+    def test_same_event_allows_multiple_entries_of_same_kind(self):
+        first_log = LogFactory(user=self.user, event=self.event, title='First log')
 
         response = self.client.post(
             reverse('journal-log-list'),
             {
                 'event': self.event.id,
-                'title': 'Duplicate',
-                'body': 'Duplicate body.',
+                'title': 'Second log',
+                'body': 'Second body.',
             },
             format='json',
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        second_log = Log.objects.get(id=response.data['id'])
+        self.assertEqual(second_log.event, self.event)
+
+        list_response = self.client.get(
+            reverse('journal-log-list'),
+            {'event': self.event.id},
+        )
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {item['id'] for item in list_response.data['results']},
+            {str(first_log.id), str(second_log.id)},
+        )
 
     def test_same_event_can_have_one_of_each_kind(self):
         LogFactory(user=self.user, event=self.event)
@@ -215,6 +227,7 @@ class JournalFeedViewTests(TestCase):
 
     def test_combined_feed_filters_by_kind_and_event(self):
         log = LogFactory(user=self.user, event=self.event)
+        second_log = LogFactory(user=self.user, event=self.event)
         ReflectionFactory(user=self.user)
 
         response = self.client.get(
@@ -223,9 +236,15 @@ class JournalFeedViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['id'], str(log.id))
-        self.assertEqual(response.data['results'][0]['kind'], 'log')
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(
+            {item['id'] for item in response.data['results']},
+            {str(log.id), str(second_log.id)},
+        )
+        self.assertEqual(
+            {item['kind'] for item in response.data['results']},
+            {'log'},
+        )
 
     def test_combined_feed_filters_all_kinds_by_title(self):
         log = LogFactory(user=self.user, event=self.event, title='Dinner log')
