@@ -2,7 +2,12 @@ from rest_framework import serializers
 from .models import Event, EventParticipant
 from contacts.models import Contact
 from contacts.serializers import ContactListSerializer
-from lookups.serializers import ContextCategorySerializer
+from lookups.models import InteractionMode, Mood
+from lookups.serializers import (
+    ContextCategorySerializer,
+    InteractionModeSerializer,
+    MoodSerializer,
+)
 
 class EventParticipantSerializer(serializers.ModelSerializer):
     contact = ContactListSerializer(read_only=True)
@@ -25,14 +30,31 @@ class EventSerializer(serializers.ModelSerializer):
         source='participant_contacts',
         required=False,
     )
+    interaction_mode = InteractionModeSerializer(read_only=True)
+    interaction_mode_id = serializers.PrimaryKeyRelatedField(
+        queryset=InteractionMode.objects.all(),
+        source='interaction_mode',
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    mood = MoodSerializer(read_only=True)
+    mood_id = serializers.PrimaryKeyRelatedField(
+        queryset=Mood.objects.all(),
+        source='mood',
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
     journals = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
-            'id', 'user', 'title', 'event_timestamp', 'end_timestamp',
-            'location_label', 'tier', 'context_category', 'participants',
-            'journaled', 'journals',
+            'id', 'user', 'title', 'description', 'event_timestamp',
+            'end_timestamp', 'location_label', 'tier', 'impact',
+            'context_category', 'interaction_mode', 'interaction_mode_id',
+            'mood', 'mood_id', 'participants', 'journaled', 'journals',
         ]
         read_only_fields = ['user', 'journaled', 'journals']
 
@@ -42,11 +64,37 @@ class EventSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'event_timestamp': 'Event timestamp cannot be changed after creation.'
                 })
+        user = self._request_user()
+        if user:
+            self._validate_visible_lookup(
+                'interaction_mode_id',
+                attrs.get('interaction_mode'),
+                InteractionMode,
+                user,
+            )
+            self._validate_visible_lookup(
+                'mood_id',
+                attrs.get('mood'),
+                Mood,
+                user,
+            )
         return attrs
 
     def create(self, validated_data):
         participant_contacts = validated_data.pop('participant_contacts', [])
         self._validate_participant_contacts(participant_contacts, validated_data['user'])
+        self._validate_visible_lookup(
+            'interaction_mode_id',
+            validated_data.get('interaction_mode'),
+            InteractionMode,
+            validated_data['user'],
+        )
+        self._validate_visible_lookup(
+            'mood_id',
+            validated_data.get('mood'),
+            Mood,
+            validated_data['user'],
+        )
         event = Event.objects.create(**validated_data)
 
         for contact in self._unique_contacts(participant_contacts):
@@ -57,6 +105,18 @@ class EventSerializer(serializers.ModelSerializer):
         participant_contacts = validated_data.pop('participant_contacts', None)
         if participant_contacts is not None:
             self._validate_participant_contacts(participant_contacts, instance.user)
+        self._validate_visible_lookup(
+            'interaction_mode_id',
+            validated_data.get('interaction_mode'),
+            InteractionMode,
+            instance.user,
+        )
+        self._validate_visible_lookup(
+            'mood_id',
+            validated_data.get('mood'),
+            Mood,
+            instance.user,
+        )
         instance = super().update(instance, validated_data)
         if participant_contacts is not None:
             self._replace_participants(instance, participant_contacts)
@@ -89,6 +149,8 @@ class EventSerializer(serializers.ModelSerializer):
             'id': log.id,
             'kind': 'log',
             'title': log.title,
+            'mood': MoodSerializer(log.mood, context=self.context).data
+            if log.mood_id else None,
             'created_timestamp': log.created_timestamp,
             'updated_timestamp': log.updated_timestamp,
         }
@@ -122,6 +184,20 @@ class EventSerializer(serializers.ModelSerializer):
                 'participants': 'Select contacts owned by the requesting user.'
             })
 
+    def _validate_visible_lookup(self, field_name, lookup, model, user):
+        if not lookup:
+            return
+        if not model.objects.for_user(user).filter(pk=lookup.pk).exists():
+            raise serializers.ValidationError({
+                field_name: 'Select a lookup row visible to the requesting user.'
+            })
+
+    def _request_user(self):
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            return request.user
+        return None
+
     def _replace_participants(self, event, requested_contacts):
         requested_contacts = self._unique_contacts(requested_contacts)
         requested_ids = {contact.id for contact in requested_contacts}
@@ -151,6 +227,9 @@ class EventSerializer(serializers.ModelSerializer):
 class EventListSerializer(serializers.ModelSerializer):
     """Lightweight serializer used on GET /api/events/ list view."""
     context_category = ContextCategorySerializer(read_only=True)
+    interaction_mode = InteractionModeSerializer(read_only=True)
+    mood = MoodSerializer(read_only=True)
+    participants = EventParticipantSerializer(many=True, read_only=True)
     participant_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -158,11 +237,16 @@ class EventListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
+            "description",
             "event_timestamp",
             "end_timestamp",
             "location_label",
             "tier",
+            "impact",
             "context_category",
+            "interaction_mode",
+            "mood",
+            "participants",
             "participant_count",
             "journaled",
         ]

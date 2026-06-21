@@ -85,6 +85,30 @@ class Relation(models.Model):
 
     def __str__(self):
         return self.name
+
+class InteractionMode(models.Model):
+    '''
+    Lookup table for how an Event interaction happened.
+    System defaults are seeded via data migration.
+    Users can have custom rows later, but v1 exposes read-only API access.
+    '''
+    user = models.ForeignKey(
+        Users,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='interaction_modes'
+    )
+    name = models.CharField(max_length=100)
+    is_system_default = models.BooleanField(default=False)
+
+    objects = LookupManager()
+
+    class Meta:
+        db_table = 'interaction_modes'
+
+    def __str__(self):
+        return self.name
     
 class Mood(models.Model):
     '''

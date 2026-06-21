@@ -3,6 +3,7 @@ from .models import (
     Occupation,
     EducationLevel,
     Relation,
+    InteractionMode,
     Mood,
     ContextCategory,
     FactCategory,
@@ -28,6 +29,13 @@ class EducationLevelAdmin(admin.ModelAdmin):
 
 @admin.register(Relation)
 class RelationAdmin(admin.ModelAdmin):
+    list_display = ['name', 'user', 'is_system_default']
+    list_filter = ['is_system_default']
+    search_fields = ['name']
+
+
+@admin.register(InteractionMode)
+class InteractionModeAdmin(admin.ModelAdmin):
     list_display = ['name', 'user', 'is_system_default']
     list_filter = ['is_system_default']
     search_fields = ['name']

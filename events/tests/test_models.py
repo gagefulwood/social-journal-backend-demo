@@ -6,6 +6,10 @@ from django.utils import timezone
 
 from contacts.tests.factories import ContactFactory, UserFactory
 from events.models import (
+    EVENT_IMPACT_CHOICES,
+    EVENT_IMPACT_NEGATIVE,
+    EVENT_IMPACT_NEUTRAL,
+    EVENT_IMPACT_POSITIVE,
     EVENT_TIER_CHOICES,
     EVENT_TIER_MILESTONE,
     EVENT_TIER_ROUTINE,
@@ -45,12 +49,23 @@ class EventModelTests(TestCase):
         self.assertIsNone(event.end_timestamp)
         self.assertEqual(event.location_label, "")
         self.assertEqual(event.tier, EVENT_TIER_ROUTINE)
+        self.assertEqual(event.description, "")
+        self.assertEqual(event.impact, "")
+        self.assertIsNone(event.interaction_mode)
+        self.assertIsNone(event.mood)
 
     def test_tier_choices_include_routine_and_milestone(self):
         choices = dict(EVENT_TIER_CHOICES)
 
         self.assertEqual(choices[EVENT_TIER_ROUTINE], "Routine")
         self.assertEqual(choices[EVENT_TIER_MILESTONE], "Milestone")
+
+    def test_impact_choices_include_supported_values(self):
+        choices = dict(EVENT_IMPACT_CHOICES)
+
+        self.assertEqual(choices[EVENT_IMPACT_NEGATIVE], "Negative")
+        self.assertEqual(choices[EVENT_IMPACT_NEUTRAL], "Neutral")
+        self.assertEqual(choices[EVENT_IMPACT_POSITIVE], "Positive")
 
     def test_db_table_is_events(self):
         self.assertEqual(Event._meta.db_table, "events")

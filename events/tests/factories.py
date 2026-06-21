@@ -13,10 +13,14 @@ class EventFactory(DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     title = factory.Sequence(lambda n: f"Event {n}")
     event_timestamp = factory.LazyFunction(timezone.now)
+    description = ""
     end_timestamp = None
     location_label = ""
     tier = "routine"
+    impact = ""
     context_category = None
+    interaction_mode = None
+    mood = None
 
 
 class EventParticipantFactory(DjangoModelFactory):

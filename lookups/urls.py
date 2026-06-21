@@ -7,6 +7,7 @@ from .views import (
     OccupationViewSet, 
     EducationLevelViewSet,
     RelationViewSet,
+    InteractionModeViewSet,
     MediaTypeViewSet, 
     EntryTagViewSet,
 )
@@ -19,6 +20,7 @@ router.register("observation-markers", ObservationMarkerViewSet, basename="obser
 router.register("occupations",        OccupationViewSet,      basename="occupation")
 router.register("education-levels",   EducationLevelViewSet,  basename="education-level")
 router.register("relations",          RelationViewSet,        basename="relation")
+router.register("interaction-modes",  InteractionModeViewSet, basename="interaction-mode")
 router.register("media-types",        MediaTypeViewSet,       basename="media-type")
 router.register("entry-tags",         EntryTagViewSet,        basename="entry-tag")
 

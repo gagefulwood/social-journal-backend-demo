@@ -17,10 +17,13 @@ class EventAdmin(admin.ModelAdmin):
         'event_timestamp',
         'end_timestamp',
         'tier',
+        'impact',
         'context_category',
+        'interaction_mode',
+        'mood',
     ]
-    search_fields = ['title', 'location_label', 'user__email']
-    list_filter = ['tier', 'context_category__name']
+    search_fields = ['title', 'description', 'location_label', 'user__email']
+    list_filter = ['tier', 'impact', 'context_category__name', 'interaction_mode']
     inlines = [EventParticipantInline]
 
     def user_email(self, obj):

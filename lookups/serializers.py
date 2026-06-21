@@ -4,6 +4,7 @@ from .models import (
     Occupation,
     EducationLevel,
     Relation,
+    InteractionMode,
     Mood,
     ContextCategory,
     FactCategory,
@@ -27,6 +28,12 @@ class EducationLevelSerializer(serializers.ModelSerializer):
 class RelationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Relation
+        fields = ["id", "name", "is_system_default"]
+        read_only_fields = ['is_system_default']
+
+class InteractionModeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InteractionMode
         fields = ["id", "name", "is_system_default"]
         read_only_fields = ['is_system_default']
 
