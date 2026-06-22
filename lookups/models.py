@@ -160,6 +160,18 @@ class ContextCategory(models.Model):
 
     class Meta:
         db_table = 'context_categories'
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name"],
+                condition=Q(is_system_default=True),
+                name="uniq_context_category_system_default_name",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                condition=Q(user__isnull=False),
+                name="uniq_context_category_user_name",
+            )
+        ]
 
     def __str__(self):
         return self.name
