@@ -253,3 +253,14 @@ class EventListSerializer(serializers.ModelSerializer):
 
     def get_participant_count(self, obj):
         return obj.participants.count()
+
+
+class EventRelatedSerializer(EventListSerializer):
+    """Event list row plus machine-readable reasons for related ranking."""
+    relation_reasons = serializers.SerializerMethodField()
+
+    class Meta(EventListSerializer.Meta):
+        fields = EventListSerializer.Meta.fields + ["relation_reasons"]
+
+    def get_relation_reasons(self, obj):
+        return getattr(obj, "relation_reasons", [])
