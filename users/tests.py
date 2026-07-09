@@ -1,9 +1,9 @@
 from django.conf import settings
 from django.urls import reverse
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 import pyotp
 
 from users.models import Users
@@ -71,6 +71,33 @@ class AuthCookieTests(TestCase):
         self.assertFalse(response.data['mfa_pending'])
         self.assertEqual(response.data['role'], 'Standard User')
 
+    def test_login_requires_mfa_when_user_has_mfa_enabled(self):
+        self.user.is_mfa_enabled = True
+        self.user.save(update_fields=['is_mfa_enabled'])
+
+        response = self.login()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_mfa_enabled'])
+        self.assertTrue(response.data['mfa_pending'])
+        access = AccessToken(response.cookies[settings.JWT_ACCESS_COOKIE_NAME].value)
+        self.assertTrue(access['mfa_enabled'])
+        self.assertTrue(access['mfa_pending'])
+
+    @override_settings(DISABLE_MFA_REQUIREMENT=True)
+    def test_login_can_disable_mfa_requirement_without_clearing_mfa_state(self):
+        self.user.is_mfa_enabled = True
+        self.user.save(update_fields=['is_mfa_enabled'])
+
+        response = self.login()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_mfa_enabled'])
+        self.assertFalse(response.data['mfa_pending'])
+        access = AccessToken(response.cookies[settings.JWT_ACCESS_COOKIE_NAME].value)
+        self.assertTrue(access['mfa_enabled'])
+        self.assertFalse(access['mfa_pending'])
+
     def test_access_cookie_authenticates_protected_endpoint(self):
         login_response = self.login()
         self.client.cookies[settings.JWT_ACCESS_COOKIE_NAME] = (
@@ -105,6 +132,28 @@ class AuthCookieTests(TestCase):
             response.cookies[settings.JWT_REFRESH_COOKIE_NAME].value,
             old_refresh,
         )
+
+    @override_settings(DISABLE_MFA_REQUIREMENT=True)
+    def test_refresh_can_disable_mfa_requirement_for_existing_refresh_cookie(self):
+        self.user.is_mfa_enabled = True
+        self.user.save(update_fields=['is_mfa_enabled'])
+        old_refresh = RefreshToken.for_user(self.user)
+        old_refresh['mfa_enabled'] = True
+        old_refresh['mfa_pending'] = True
+        old_refresh['role'] = 'Standard User'
+        self.client.cookies[settings.JWT_REFRESH_COOKIE_NAME] = str(old_refresh)
+
+        response = self.client.post(reverse('auth-token-refresh'), {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_mfa_enabled'])
+        self.assertFalse(response.data['mfa_pending'])
+        access = AccessToken(response.cookies[settings.JWT_ACCESS_COOKIE_NAME].value)
+        refresh = RefreshToken(response.cookies[settings.JWT_REFRESH_COOKIE_NAME].value)
+        self.assertTrue(access['mfa_enabled'])
+        self.assertFalse(access['mfa_pending'])
+        self.assertTrue(refresh['mfa_enabled'])
+        self.assertFalse(refresh['mfa_pending'])
 
     def test_refresh_blacklists_old_refresh_cookie_after_rotation(self):
         login_response = self.login()
