@@ -6,6 +6,7 @@ from contacts.tests.factories import ContactFactory
 from events.models import EventParticipant
 from events.serializers import EventListSerializer, EventSerializer
 from journals.models import Exercise, Log, Reflection
+from lookups.models import InteractionMode, Mood
 
 from .factories import EventFactory
 
@@ -14,15 +15,28 @@ class EventSerializerTests(TestCase):
     def test_create_writes_participants_from_participants(self):
         event = EventFactory()
         contact = ContactFactory(user=event.user)
+        interaction_mode = InteractionMode.objects.create(
+            name="In person",
+            is_system_default=True,
+        )
+        mood = Mood.objects.create(
+            user=event.user,
+            name="Calm",
+            emoji_icon="C",
+        )
         serializer = EventSerializer(
             data={
                 "title": "Dinner",
+                "description": "Caught up over dinner.",
                 "event_timestamp": event.event_timestamp.isoformat(),
                 "end_timestamp": (
                     event.event_timestamp + timezone.timedelta(hours=1)
                 ).isoformat(),
                 "location_label": "Cafe",
                 "tier": "milestone",
+                "impact": "positive",
+                "interaction_mode_id": interaction_mode.id,
+                "mood_id": mood.id,
                 "participants": [contact.id],
             }
         )
@@ -31,11 +45,67 @@ class EventSerializerTests(TestCase):
         created = serializer.save(user=event.user)
 
         self.assertEqual(created.user, event.user)
+        self.assertEqual(created.description, "Caught up over dinner.")
         self.assertEqual(created.location_label, "Cafe")
         self.assertEqual(created.tier, "milestone")
+        self.assertEqual(created.impact, "positive")
+        self.assertEqual(created.interaction_mode, interaction_mode)
+        self.assertEqual(created.mood, mood)
         self.assertTrue(
             EventParticipant.objects.filter(event=created, contact=contact).exists()
         )
+
+    def test_update_writes_mood_and_interaction_mode_ids(self):
+        event = EventFactory()
+        interaction_mode = InteractionMode.objects.create(
+            name="Phone call",
+            is_system_default=True,
+        )
+        mood = Mood.objects.create(user=event.user, name="Happy", emoji_icon="H")
+        serializer = EventSerializer(
+            event,
+            data={
+                "description": "Quick check-in.",
+                "impact": "neutral",
+                "interaction_mode_id": interaction_mode.id,
+                "mood_id": mood.id,
+            },
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+
+        self.assertEqual(updated.description, "Quick check-in.")
+        self.assertEqual(updated.impact, "neutral")
+        self.assertEqual(updated.interaction_mode, interaction_mode)
+        self.assertEqual(updated.mood, mood)
+
+    def test_create_rejects_lookup_rows_hidden_from_owner(self):
+        event = EventFactory()
+        other_event = EventFactory()
+        interaction_mode = InteractionMode.objects.create(
+            user=other_event.user,
+            name="Private mode",
+        )
+        mood = Mood.objects.create(
+            user=other_event.user,
+            name="Private mood",
+            emoji_icon="P",
+        )
+        serializer = EventSerializer(
+            data={
+                "title": "Dinner",
+                "event_timestamp": event.event_timestamp.isoformat(),
+                "interaction_mode_id": interaction_mode.id,
+                "mood_id": mood.id,
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        with self.assertRaises(ValidationError) as context:
+            serializer.save(user=event.user)
+        self.assertIn("interaction_mode_id", context.exception.detail)
 
     def test_create_rejects_other_users_participants(self):
         event = EventFactory()
@@ -53,9 +123,15 @@ class EventSerializerTests(TestCase):
             serializer.save(user=event.user)
 
     def test_serialized_detail_includes_participants_journaled_and_journals(self):
-        event = EventFactory()
+        mood = Mood.objects.create(name="Happy", emoji_icon="H", is_system_default=True)
+        event = EventFactory(mood=mood)
         contact = ContactFactory(user=event.user, first_name="Ada")
         EventParticipant.objects.create(event=event, contact=contact)
+        log_mood = Mood.objects.create(
+            user=event.user,
+            name="Calm",
+            emoji_icon="C",
+        )
         older_log = Log.objects.create(
             user=event.user,
             event=event,
@@ -67,6 +143,7 @@ class EventSerializerTests(TestCase):
             event=event,
             title="Newer Log",
             body="Body",
+            mood=log_mood,
         )
         now = timezone.now()
         Log.objects.filter(pk=older_log.pk).update(
@@ -76,6 +153,7 @@ class EventSerializerTests(TestCase):
 
         data = EventSerializer(event).data
 
+        self.assertEqual(data["mood"]["id"], mood.id)
         self.assertTrue(data["journaled"])
         self.assertEqual(len(data["participants"]), 1)
         self.assertEqual(data["participants"][0]["contact"]["id"], contact.id)
@@ -85,6 +163,7 @@ class EventSerializerTests(TestCase):
         )
         self.assertEqual(data["journals"]["logs"][0]["kind"], "log")
         self.assertEqual(data["journals"]["logs"][0]["title"], "Newer Log")
+        self.assertEqual(data["journals"]["logs"][0]["mood"]["id"], log_mood.id)
         self.assertEqual(data["journals"]["reflections"], [])
         self.assertEqual(data["journals"]["exercises"], [])
 
@@ -158,12 +237,27 @@ class EventSerializerTests(TestCase):
         self.assertEqual(contact_ids, {kept_contact.id, added_contact.id})
 
     def test_list_serializer_includes_participant_count_and_journaled(self):
-        event = EventFactory()
+        interaction_mode = InteractionMode.objects.create(
+            name="Video call",
+            is_system_default=True,
+        )
+        mood = Mood.objects.create(name="Happy", emoji_icon="H", is_system_default=True)
+        event = EventFactory(
+            description="Planning notes",
+            impact="positive",
+            interaction_mode=interaction_mode,
+            mood=mood,
+        )
         contact = ContactFactory(user=event.user)
         EventParticipant.objects.create(event=event, contact=contact)
 
         data = EventListSerializer(event).data
 
+        self.assertEqual(data["description"], "Planning notes")
+        self.assertEqual(data["impact"], "positive")
+        self.assertEqual(data["interaction_mode"]["id"], interaction_mode.id)
+        self.assertEqual(data["mood"]["id"], mood.id)
+        self.assertEqual(data["participants"][0]["contact"]["id"], contact.id)
         self.assertEqual(data["participant_count"], 1)
         self.assertFalse(data["journaled"])
         self.assertEqual(data["tier"], "routine")

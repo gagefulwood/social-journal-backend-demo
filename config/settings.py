@@ -193,6 +193,11 @@ JWT_COOKIE_HTTPONLY = True
 JWT_COOKIE_SECURE = config('JWT_COOKIE_SECURE', default=not DEBUG, cast=bool)
 JWT_COOKIE_SAMESITE = config('JWT_COOKIE_SAMESITE', default='Lax')
 JWT_COOKIE_PATH = config('JWT_COOKIE_PATH', default='/')
+DISABLE_MFA_REQUIREMENT = DEBUG and config(
+    'DISABLE_MFA_REQUIREMENT',
+    default=False,
+    cast=bool,
+)
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

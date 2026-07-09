@@ -59,6 +59,15 @@ DB_PORT=5432
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
+For local development, you can temporarily bypass the MFA verification step
+without removing a user's MFA setup:
+```
+DISABLE_MFA_REQUIREMENT=True
+```
+
+This only changes whether login/refresh responses report `mfa_pending`; the MFA
+setup and verification endpoints remain available.
+
 ### 5. Create the PostgreSQL database
 
 Make sure PostgreSQL is running, then:

@@ -8,9 +8,13 @@ def role_for_user(user):
         return 'Standard User'
 
 
+def mfa_pending_for_user(user):
+    return user.is_mfa_enabled and not settings.DISABLE_MFA_REQUIREMENT
+
+
 def build_auth_metadata(user, *, mfa_pending=None):
     if mfa_pending is None:
-        mfa_pending = user.is_mfa_enabled
+        mfa_pending = mfa_pending_for_user(user)
     return {
         'user_id': user.id,
         'email': user.email,

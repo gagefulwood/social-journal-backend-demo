@@ -14,7 +14,13 @@ import pyotp
 from django.conf import settings
 from users.models import Users
 
-from .cookies import build_auth_metadata, clear_token_cookies, role_for_user, set_token_cookies
+from .cookies import (
+    build_auth_metadata,
+    clear_token_cookies,
+    mfa_pending_for_user,
+    role_for_user,
+    set_token_cookies,
+)
 from .serializers import (
     UserRegistrationSerializer,
     CustomTokenObtainPairSerializer,
@@ -91,11 +97,15 @@ class CookieTokenRefreshView(TokenRefreshView):
         serializer = self.get_serializer(data={'refresh': refresh_token})
         serializer.is_valid(raise_exception=True)
         token_data = serializer.validated_data
+        refreshed = RefreshToken(token_data.get('refresh', refresh_token))
+        refreshed['mfa_pending'] = mfa_pending_for_user(user)
+        refreshed['mfa_enabled'] = user.is_mfa_enabled
+        refreshed['role'] = role_for_user(user)
         response = Response(build_auth_metadata(user), status=status.HTTP_200_OK)
         return set_token_cookies(
             response,
-            token_data['access'],
-            token_data.get('refresh'),
+            refreshed.access_token,
+            refreshed if 'refresh' in token_data else None,
         )
 
 @extend_schema(exclude=True)

@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Users
-from .cookies import build_auth_metadata, role_for_user
+from .cookies import build_auth_metadata, mfa_pending_for_user, role_for_user
 import re
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -91,7 +91,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token['role'] = role_for_user(user)
         token['mfa_enabled'] = user.is_mfa_enabled
-        token['mfa_pending'] = user.is_mfa_enabled
+        token['mfa_pending'] = mfa_pending_for_user(user)
         return token
 
 class UserPublicSerializer(serializers.ModelSerializer):

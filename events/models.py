@@ -1,15 +1,24 @@
 from django.db import models
 from users.models import Users
 from contacts.models import Contact
-from lookups.models import ContextCategory
+from lookups.models import ContextCategory, InteractionMode, Mood
 from django.utils import timezone
 
 EVENT_TIER_ROUTINE = 'routine'
 EVENT_TIER_MILESTONE = 'milestone'
+EVENT_IMPACT_NEGATIVE = 'negative'
+EVENT_IMPACT_NEUTRAL = 'neutral'
+EVENT_IMPACT_POSITIVE = 'positive'
 
 EVENT_TIER_CHOICES = [
     (EVENT_TIER_ROUTINE, 'Routine'),
     (EVENT_TIER_MILESTONE, 'Milestone'),
+]
+
+EVENT_IMPACT_CHOICES = [
+    (EVENT_IMPACT_NEGATIVE, 'Negative'),
+    (EVENT_IMPACT_NEUTRAL, 'Neutral'),
+    (EVENT_IMPACT_POSITIVE, 'Positive'),
 ]
 
 class EventManager(models.Manager):
@@ -46,6 +55,7 @@ class Event(models.Model):
         related_name = 'events',
     ) 
     title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
     event_timestamp = models.DateTimeField()
     end_timestamp = models.DateTimeField(null=True, blank=True)
     location_label = models.CharField(max_length=255, blank=True)
@@ -54,12 +64,31 @@ class Event(models.Model):
         choices=EVENT_TIER_CHOICES,
         default=EVENT_TIER_ROUTINE,
     )
+    impact = models.CharField(
+        max_length=20,
+        choices=EVENT_IMPACT_CHOICES,
+        blank=True,
+    )
     context_category = models.ForeignKey(
         ContextCategory,
         null=True,
         blank=True,
         on_delete = models.SET_NULL,
         related_name = 'events',
+    )
+    interaction_mode = models.ForeignKey(
+        InteractionMode,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='events',
+    )
+    mood = models.ForeignKey(
+        Mood,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='events',
     )
     objects = EventManager()
 
