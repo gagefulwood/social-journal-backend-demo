@@ -66,6 +66,10 @@ class FactViewSetTests(TestCase):
             name="Health",
             icon_reference="FiHeart",
         )
+        self.other_users_category = FactCategory.objects.create(
+            user=self.other_user,
+            name="Private",
+        )
         self.client.force_authenticate(user=self.user)
 
     def test_list_returns_facts_for_contact_owner(self):
@@ -102,6 +106,169 @@ class FactViewSetTests(TestCase):
         fact = Fact.objects.get(id=response.data["id"])
         self.assertEqual(fact.category, self.category)
         self.assertEqual(fact.contact, self.contact)
+
+    def test_list_includes_value_alias_and_category_summary(self):
+        parent = FactCategory.objects.create(
+            user=self.user,
+            name="Preferences",
+        )
+        category = FactCategory.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Coffee",
+            icon_reference="FiCoffee",
+        )
+        Fact.objects.create(
+            contact=self.contact,
+            category=category,
+            detail_value="Oat milk",
+        )
+
+        response = self.client.get(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        fact = response.data["results"][0]
+        self.assertEqual(fact["detail_value"], "Oat milk")
+        self.assertEqual(fact["value"], "Oat milk")
+        self.assertFalse(fact["is_conversation_cue"])
+        self.assertEqual(fact["category_summary"], {
+            "id": category.id,
+            "name": "Coffee",
+            "icon_reference": "FiCoffee",
+            "parent": {"id": parent.id, "name": "Preferences"},
+        })
+
+    def test_value_is_read_only_and_detail_value_remains_required(self):
+        response = self.client.post(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id}),
+            {"category": self.category.id, "value": "Oat milk"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("detail_value", response.data)
+
+    def test_fact_conversation_cue_is_owner_writable_and_filterable(self):
+        cue_response = self.client.post(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id}),
+            {
+                "category": self.category.id,
+                "detail_value": "Ask about the spring 10K.",
+                "is_conversation_cue": True,
+            },
+            format="json",
+        )
+        Fact.objects.create(
+            contact=self.contact,
+            category=self.category,
+            detail_value="Durable but not a cue.",
+        )
+
+        self.assertEqual(cue_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(cue_response.data["is_conversation_cue"])
+
+        filtered_response = self.client.get(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id}),
+            {"is_conversation_cue": "true"},
+        )
+        patch_response = self.client.patch(
+            reverse("contact-facts-detail", kwargs={
+                "contact_pk": self.contact.id,
+                "pk": cue_response.data["id"],
+            }),
+            {"is_conversation_cue": False},
+            format="json",
+        )
+
+        self.assertEqual(filtered_response.data["count"], 1)
+        self.assertEqual(filtered_response.data["results"][0]["id"], cue_response.data["id"])
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(patch_response.data["is_conversation_cue"])
+
+    def test_filter_by_category_and_search(self):
+        coffee = FactCategory.objects.create(user=self.user, name="Coffee")
+        training = FactCategory.objects.create(user=self.user, name="Training")
+        matching_fact = Fact.objects.create(
+            contact=self.contact,
+            category=coffee,
+            detail_value="Oat milk",
+        )
+        Fact.objects.create(
+            contact=self.contact,
+            category=training,
+            detail_value="Spring 10K",
+        )
+
+        category_response = self.client.get(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id}),
+            {"category": coffee.id},
+        )
+        search_response = self.client.get(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id}),
+            {"search": "coffee"},
+        )
+
+        self.assertEqual(category_response.data["count"], 1)
+        self.assertEqual(category_response.data["results"][0]["id"], matching_fact.id)
+        self.assertEqual(search_response.data["count"], 1)
+        self.assertEqual(search_response.data["results"][0]["id"], matching_fact.id)
+
+    def test_list_uses_loaded_category_relations(self):
+        parent = FactCategory.objects.create(user=self.user, name="Preferences")
+        category = FactCategory.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Coffee",
+        )
+        Fact.objects.create(
+            contact=self.contact,
+            category=category,
+            detail_value="Oat milk",
+        )
+
+        with self.assertNumQueries(3):
+            response = self.client.get(
+                reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id})
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_create_rejects_another_users_fact_category(self):
+        response = self.client.post(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id}),
+            {
+                "category": self.other_users_category.id,
+                "detail_value": "Private category injection.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("category", response.data)
+
+    def test_other_users_contact_is_inaccessible(self):
+        response = self.client.get(
+            reverse("contact-facts-list", kwargs={"contact_pk": self.other_contact.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_inactive_contact_is_inaccessible_for_list_and_create(self):
+        self.contact.is_active = False
+        self.contact.save(update_fields=["is_active"])
+        url = reverse("contact-facts-list", kwargs={"contact_pk": self.contact.id})
+
+        list_response = self.client.get(url)
+        create_response = self.client.post(
+            url,
+            {"category": self.category.id, "detail_value": "Should not save."},
+            format="json",
+        )
+
+        self.assertEqual(list_response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(create_response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_old_contact_details_route_name_is_removed(self):
         with self.assertRaises(NoReverseMatch):

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from events.models import Event, EventParticipant
+from lookups.models import FactCategory, ObservationMarker
 from media.models import MediaAsset
 from media.serializers import MediaAssetListSerializer
 
@@ -12,9 +14,40 @@ class FactSerializer(serializers.ModelSerializer):
     /api/contacts/{id}/facts/
     contact_id is set automatically from the URL kwarg in the ViewSet
     '''
+    value = serializers.ReadOnlyField(source='detail_value')
+    category_summary = serializers.SerializerMethodField()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        fields['category'].queryset = (
+            FactCategory.objects.for_user(request.user)
+            if request and request.user.is_authenticated
+            else FactCategory.objects.none()
+        )
+        return fields
+
+    def get_category_summary(self, obj):
+        if obj.category_id is None:
+            return None
+
+        parent = obj.category.parent
+        return {
+            'id': obj.category_id,
+            'name': obj.category.name,
+            'icon_reference': obj.category.icon_reference,
+            'parent': {
+                'id': parent.id,
+                'name': parent.name,
+            } if parent else None,
+        }
+
     class Meta:
         model = Fact
-        fields = ['id', 'contact', 'category', 'detail_value']
+        fields = [
+            'id', 'contact', 'category', 'category_summary',
+            'detail_value', 'value', 'is_conversation_cue',
+        ]
         read_only_fields = ['contact']
 
 class ObservationSerializer(serializers.ModelSerializer):
@@ -23,10 +56,59 @@ class ObservationSerializer(serializers.ModelSerializer):
     Used by ObservationViewSet nested under /api/contacts/{id}/observations/
     contact_id is set automatically from the URL kwarg in the ViewSet
     '''
+    event_summary = serializers.SerializerMethodField()
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        fields['marker'].queryset = (
+            ObservationMarker.objects.for_user(request.user)
+            if request and request.user.is_authenticated
+            else ObservationMarker.objects.none()
+        )
+        fields['event'].queryset = (
+            Event.objects.filter(user=request.user)
+            if request and request.user.is_authenticated
+            else Event.objects.none()
+        )
+        return fields
+
+    def validate(self, attrs):
+        event = attrs.get('event')
+        if event is None:
+            return attrs
+
+        contact = self.context.get('contact')
+        if contact is None and self.instance is not None:
+            contact = self.instance.contact
+        if contact is None or not EventParticipant.objects.filter(
+            event=event,
+            contact=contact,
+        ).exists():
+            raise serializers.ValidationError({
+                'event': 'Select an event shared with this contact.'
+            })
+        return attrs
+
+    def get_event_summary(self, obj):
+        if obj.event_id is None:
+            return None
+        return {
+            'id': obj.event_id,
+            'title': obj.event.title,
+            'event_timestamp': obj.event.event_timestamp,
+        }
+
     class Meta:
         model = Observation
-        fields = ['id', 'contact', 'marker', 'body', 'created_timestamp', 'is_active']
-        read_only_fields = ['contact', 'created_timestamp']
+        fields = [
+            'id', 'contact', 'marker', 'body', 'event', 'event_summary',
+            'observation_type', 'status', 'occurred_at', 'created_timestamp',
+            'archived_at', 'is_active',
+        ]
+        read_only_fields = [
+            'contact', 'created_timestamp', 'archived_at', 'is_active',
+        ]
 
 class ContactListSerializer(serializers.ModelSerializer):
     '''

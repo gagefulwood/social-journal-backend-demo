@@ -1,6 +1,6 @@
-# Social Journal — Backend
+# Social Journal - Backend
 
-Django REST Framework API for the Social Journal Personal Relationship Manager.
+Django REST Framework API for the private Social Journal relationship journal.
 
 ---
 
@@ -41,16 +41,10 @@ pip install -r requirements.txt
 
 ### 4. Create your environment file
 
-Copy the example env file and fill in your local values:
-```bash
-cp .env.example .env
-```
-
-Open `.env` and set the following:
+The repository does not currently include an `.env.example`. Create a local
+`.env` file (it is ignored by Git) with the database and application values:
 ```
 SECRET_KEY=any-local-secret-key-string
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
 DB_NAME=social_journal
 DB_USER=postgres
 DB_PASSWORD=your_postgres_password
@@ -107,8 +101,8 @@ Django admin will be available at `http://127.0.0.1:8000/admin/`.
 | POST | `/api/auth/logout/` | Logout and blacklist refresh token | Required |
 | GET | `/api/auth/mfa/setup/` | Generate MFA secret and QR URI | Required |
 | POST | `/api/auth/mfa/verify/` | Verify TOTP code and enable MFA | Required |
-| GET | `/api/users/me/` | Get current user profile | Required |
-| PATCH | `/api/users/me/` | Update current user profile | Required |
+| GET | `/api/auth/me/` | Get current user profile | Required |
+| PATCH | `/api/auth/me/` | Update current user profile | Required |
 
 Protected endpoints authenticate through httpOnly JWT cookies. API clients must send
 credentials with requests; access and refresh token strings are not returned in JSON
@@ -141,3 +135,22 @@ python manage.py check
 ```
 
 Should return: `System check identified no issues.`
+
+## Populate an Existing Account
+
+Add a small, idempotent demo dataset to one existing account by exact username,
+email address, or full name:
+
+```bash
+python manage.py populate_account "gage"
+```
+
+Preview the records without saving anything:
+
+```bash
+python manage.py populate_account "gage@example.com" --dry-run
+```
+
+The command adds demo Contacts, Facts, Observations, Events, participants, Logs,
+Reflections, and Exercises. It never creates a user or deletes existing data. An
+ambiguous full name is rejected; use the account's username or email instead.

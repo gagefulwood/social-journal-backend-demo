@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from core.constants import (
     RELATIONSHIP_TREND_CHOICES,
     RELATIONSHIP_TREND_DORMANT,
@@ -12,6 +13,29 @@ from lookups.models import (
     FactCategory,
     ObservationMarker,
 )
+
+
+OBSERVATION_TYPE_NOTICE = 'notice'
+OBSERVATION_TYPE_CONVERSATION_CUE = 'conversation_cue'
+OBSERVATION_TYPE_APPRECIATION = 'appreciation'
+OBSERVATION_TYPE_CHANGE = 'change'
+
+OBSERVATION_TYPE_CHOICES = [
+    (OBSERVATION_TYPE_NOTICE, 'Notice'),
+    (OBSERVATION_TYPE_CONVERSATION_CUE, 'Conversation cue'),
+    (OBSERVATION_TYPE_APPRECIATION, 'Appreciation'),
+    (OBSERVATION_TYPE_CHANGE, 'Change'),
+]
+
+OBSERVATION_STATUS_CURRENT = 'current'
+OBSERVATION_STATUS_REVISIT_LATER = 'revisit_later'
+OBSERVATION_STATUS_ARCHIVED = 'archived'
+
+OBSERVATION_STATUS_CHOICES = [
+    (OBSERVATION_STATUS_CURRENT, 'Current'),
+    (OBSERVATION_STATUS_REVISIT_LATER, 'Revisit later'),
+    (OBSERVATION_STATUS_ARCHIVED, 'Archived'),
+]
 
 class ContactManager(models.Manager):
     '''
@@ -28,7 +52,10 @@ class ObservationManager(models.Manager):
     for_user() scopes observations to contacts owned by the requesting user.
     '''
     def for_user(self, user):
-        return self.get_queryset().filter(contact__user=user)
+        return self.get_queryset().filter(
+            contact__user=user,
+            contact__is_active=True,
+        )
 
 class Contact(models.Model):
     '''
@@ -121,6 +148,7 @@ class Fact(models.Model):
         related_name='facts'
     )
     detail_value = models.TextField()
+    is_conversation_cue = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'facts'
@@ -150,6 +178,26 @@ class Observation(models.Model):
     body = models.TextField()
     created_timestamp = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    observation_type = models.CharField(
+        max_length=32,
+        choices=OBSERVATION_TYPE_CHOICES,
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=OBSERVATION_STATUS_CHOICES,
+        default=OBSERVATION_STATUS_CURRENT,
+    )
+    occurred_at = models.DateTimeField(null=True, blank=True)
+    event = models.ForeignKey(
+        'events.Event',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='observations',
+    )
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     objects = ObservationManager()
 
@@ -159,3 +207,22 @@ class Observation(models.Model):
     
     def __str__(self):
         return f'Observation for {self.contact} - {self.created_timestamp:%Y-%m-%d}'
+
+    def save(self, *args, **kwargs):
+        if self.status == OBSERVATION_STATUS_ARCHIVED:
+            self.is_active = False
+            if self.archived_at is None:
+                self.archived_at = timezone.now()
+        else:
+            self.is_active = True
+            self.archived_at = None
+
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            kwargs['update_fields'] = set(update_fields) | {
+                'status',
+                'is_active',
+                'archived_at',
+            }
+
+        super().save(*args, **kwargs)
