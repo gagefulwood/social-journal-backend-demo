@@ -1,6 +1,8 @@
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
@@ -33,7 +35,12 @@ class ContactViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Contact.objects.none()
-        return Contact.objects.for_user(self.request.user)
+        queryset = Contact.objects.for_user(self.request.user)
+        if self.action != 'list':
+            queryset = queryset.prefetch_related(
+                'contact_methods', 'addresses', 'employment', 'education',
+            )
+        return queryset
     
     def get_serializer_class(self):
         if self.action == 'list':
@@ -62,7 +69,21 @@ class NestedContactContextViewSet(viewsets.ModelViewSet):
         return context
 
 
-class FactViewSet(NestedContactContextViewSet):
+class PinnableContextViewSetMixin:
+    @extend_schema(request=None)
+    @action(detail=True, methods=['post'])
+    def pin(self, request, *args, **kwargs):
+        instance = self.get_object().pin()
+        return Response(self.get_serializer(instance).data)
+
+    @extend_schema(request=None)
+    @action(detail=True, methods=['post'])
+    def unpin(self, request, *args, **kwargs):
+        instance = self.get_object().unpin()
+        return Response(self.get_serializer(instance).data)
+
+
+class FactViewSet(PinnableContextViewSetMixin, NestedContactContextViewSet):
     '''
     GET /api/contacts/{contact_id}/facts/
     POST /api/contacts/{contact_id}/facts/
@@ -86,7 +107,7 @@ class FactViewSet(NestedContactContextViewSet):
     def perform_create(self, serializer):
         serializer.save(contact=self.get_contact())
 
-class ObservationViewSet(NestedContactContextViewSet):
+class ObservationViewSet(PinnableContextViewSetMixin, NestedContactContextViewSet):
     '''
     GET /api/contacts/{contact_id}/observations/
     POST /api/contacts/{contact_id}/observations/

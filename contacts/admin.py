@@ -1,5 +1,33 @@
 from django.contrib import admin
-from .models import Contact, Fact, Observation
+from .models import (
+    Contact,
+    ContactAddress,
+    ContactEducation,
+    ContactEmployment,
+    ContactMethod,
+    Fact,
+    Observation,
+)
+
+
+class ContactMethodInline(admin.TabularInline):
+    model = ContactMethod
+    extra = 0
+
+
+class ContactAddressInline(admin.TabularInline):
+    model = ContactAddress
+    extra = 0
+
+
+class ContactEmploymentInline(admin.TabularInline):
+    model = ContactEmployment
+    extra = 0
+
+
+class ContactEducationInline(admin.TabularInline):
+    model = ContactEducation
+    extra = 0
 
 class FactInline(admin.TabularInline):
     model = Fact
@@ -31,7 +59,14 @@ class ContactAdmin(admin.ModelAdmin):
         'sentiment_profile',
         'connection_strength',
     ]
-    inlines = [FactInline, ObservationInline]
+    inlines = [
+        ContactMethodInline,
+        ContactAddressInline,
+        ContactEmploymentInline,
+        ContactEducationInline,
+        FactInline,
+        ObservationInline,
+    ]
 
 @admin.register(Observation)
 class ObservationAdmin(admin.ModelAdmin):

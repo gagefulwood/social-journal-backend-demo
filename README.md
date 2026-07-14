@@ -138,7 +138,7 @@ Should return: `System check identified no issues.`
 
 ## Populate an Existing Account
 
-Add a small, idempotent demo dataset to one existing account by exact username,
+Add an idempotent demo dataset to one existing account by exact username,
 email address, or full name:
 
 ```bash
@@ -151,6 +151,46 @@ Preview the records without saving anything:
 python manage.py populate_account "gage@example.com" --dry-run
 ```
 
-The command adds demo Contacts, Facts, Observations, Events, participants, Logs,
-Reflections, and Exercises. It never creates a user or deletes existing data. An
-ambiguous full name is rejected; use the account's username or email instead.
+The command adds demo Contacts, categorized Facts, typed and statused Observations,
+Events, participants, Logs, Reflections, and Exercises. Its Event history includes
+ten shared moments in each of four rolling 30-day periods, distributed evenly
+across the five demo Contacts. Fact categories are scoped to the selected account;
+standard Observation markers are reused when available. Alex's demo context includes
+three pinned Facts, three pinned Observations, and unpinned records with deterministic
+pin ordering so both Context management and Overview carousel states are visible. The
+command never creates a user or deletes existing data. Ambiguous full names are
+rejected; use the account's username or email instead.
+
+## Contact Context Pinning
+
+Facts and Observations return these read-only fields:
+
+```json
+{
+  "is_pinned": true,
+  "pinned_at": "2026-07-11T18:30:00Z"
+}
+```
+
+Use the explicit nested actions to change pin state; an empty request body is
+expected and repeated calls are safe:
+
+| Method | Endpoint |
+|--------|----------|
+| POST | `/api/contacts/{contact_id}/facts/{fact_id}/pin/` |
+| POST | `/api/contacts/{contact_id}/facts/{fact_id}/unpin/` |
+| POST | `/api/contacts/{contact_id}/observations/{observation_id}/pin/` |
+| POST | `/api/contacts/{contact_id}/observations/{observation_id}/unpin/` |
+
+Both nested list endpoints accept `pinned=true` or `pinned=false` and explicit
+`ordering=pinned_at` or `ordering=-pinned_at`. For example:
+
+```text
+GET /api/contacts/{contact_id}/observations/?pinned=true&ordering=-pinned_at
+```
+
+Explicit pin ordering places unpinned records last. Omitting `ordering` preserves
+the resource's normal list order. Observation lists continue to exclude archived
+records unless `status=archived` or the compatibility `is_active` filter requests
+them. All routes are authenticated and scoped through the active Contact owner;
+another user's identifier is returned as not found.

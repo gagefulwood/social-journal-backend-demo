@@ -67,6 +67,31 @@ class ObservationModelTests(TestCase):
         self.assertIsNone(observation.event)
         self.assertIsNone(observation.archived_at)
 
+    def test_pin_and_unpin_are_idempotent(self):
+        observation = Observation.objects.create(
+            contact=self.contact,
+            marker=self.marker,
+            body="Seemed tired after lunch.",
+        )
+
+        self.assertIsNone(observation.pinned_at)
+        self.assertFalse(observation.is_pinned)
+
+        observation.pin()
+        first_pinned_at = observation.pinned_at
+        self.assertTrue(timezone.is_aware(first_pinned_at))
+        self.assertTrue(observation.is_pinned)
+
+        observation.pin()
+        observation.refresh_from_db()
+        self.assertEqual(observation.pinned_at, first_pinned_at)
+
+        observation.unpin()
+        observation.unpin()
+        observation.refresh_from_db()
+        self.assertIsNone(observation.pinned_at)
+        self.assertFalse(observation.is_pinned)
+
     def test_lifecycle_status_synchronizes_legacy_active_and_archive_fields(self):
         observation = Observation.objects.create(
             contact=self.contact,
@@ -331,6 +356,75 @@ class ObservationViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_pin_and_unpin_actions_are_idempotent_and_server_controlled(self):
+        observation = Observation.objects.create(
+            contact=self.contact,
+            marker=self.marker,
+            body="Seemed tired after lunch.",
+        )
+        kwargs = {"contact_pk": self.contact.id, "pk": observation.id}
+
+        pin_response = self.client.post(
+            reverse("contact-observations-pin", kwargs=kwargs)
+        )
+        first_pinned_at = pin_response.data["pinned_at"]
+        repeat_response = self.client.post(
+            reverse("contact-observations-pin", kwargs=kwargs)
+        )
+        patch_response = self.client.patch(
+            reverse("contact-observations-detail", kwargs=kwargs),
+            {"pinned_at": None, "is_pinned": False},
+            format="json",
+        )
+
+        self.assertEqual(pin_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(pin_response.data["is_pinned"])
+        self.assertIsNotNone(first_pinned_at)
+        self.assertEqual(repeat_response.data["pinned_at"], first_pinned_at)
+        self.assertTrue(patch_response.data["is_pinned"])
+        self.assertEqual(patch_response.data["pinned_at"], first_pinned_at)
+
+        unpin_response = self.client.post(
+            reverse("contact-observations-unpin", kwargs=kwargs)
+        )
+        repeat_unpin_response = self.client.post(
+            reverse("contact-observations-unpin", kwargs=kwargs)
+        )
+        self.assertEqual(unpin_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(unpin_response.data["is_pinned"])
+        self.assertIsNone(unpin_response.data["pinned_at"])
+        self.assertEqual(repeat_unpin_response.data, unpin_response.data)
+
+    def test_other_users_observation_cannot_be_pinned(self):
+        observation = Observation.objects.create(
+            contact=self.other_contact,
+            body="Other user's observation.",
+        )
+
+        response = self.client.post(reverse("contact-observations-pin", kwargs={
+            "contact_pk": self.other_contact.id,
+            "pk": observation.id,
+        }))
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        observation.refresh_from_db()
+        self.assertFalse(observation.is_pinned)
+
+    def test_deleting_a_pinned_observation_removes_it(self):
+        observation = Observation.objects.create(
+            contact=self.contact,
+            body="Temporary.",
+        )
+        observation.pin()
+
+        response = self.client.delete(reverse(
+            "contact-observations-detail",
+            kwargs={"contact_pk": self.contact.id, "pk": observation.id},
+        ))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Observation.objects.filter(pk=observation.id).exists())
+
     def test_inactive_contact_is_inaccessible_for_list_and_create(self):
         self.contact.is_active = False
         self.contact.save(update_fields=["is_active"])
@@ -543,6 +637,114 @@ class ObservationViewSetTests(TestCase):
         self.assertEqual(
             [item["id"] for item in response.data["results"]],
             [newest.id, fallback.id, oldest.id],
+        )
+
+    def test_pin_filters_and_explicit_ordering_preserve_default_order(self):
+        now = timezone.now()
+        newest_by_occurrence = Observation.objects.create(
+            contact=self.contact,
+            body="Newest by occurrence.",
+            occurred_at=now,
+        )
+        unpinned = Observation.objects.create(
+            contact=self.contact,
+            body="Unpinned.",
+            occurred_at=now - timezone.timedelta(days=1),
+        )
+        newest_pin = Observation.objects.create(
+            contact=self.contact,
+            body="Newest pin.",
+            occurred_at=now - timezone.timedelta(days=2),
+        )
+        Observation.objects.filter(pk=newest_by_occurrence.pk).update(
+            pinned_at=now - timezone.timedelta(days=1)
+        )
+        Observation.objects.filter(pk=newest_pin.pk).update(pinned_at=now)
+        url = reverse(
+            "contact-observations-list",
+            kwargs={"contact_pk": self.contact.id},
+        )
+
+        default_response = self.client.get(url)
+        pinned_response = self.client.get(url, {"pinned": "true"})
+        unpinned_response = self.client.get(url, {"pinned": "false"})
+        newest_first_response = self.client.get(url, {"ordering": "-pinned_at"})
+        oldest_first_response = self.client.get(url, {"ordering": "pinned_at"})
+
+        self.assertEqual(
+            [item["id"] for item in default_response.data["results"]],
+            [newest_by_occurrence.id, unpinned.id, newest_pin.id],
+        )
+        self.assertEqual(
+            [item["id"] for item in pinned_response.data["results"]],
+            [newest_by_occurrence.id, newest_pin.id],
+        )
+        self.assertTrue(all(
+            item["is_pinned"] and item["pinned_at"]
+            for item in pinned_response.data["results"]
+        ))
+        self.assertEqual(
+            [item["id"] for item in unpinned_response.data["results"]],
+            [unpinned.id],
+        )
+        self.assertFalse(unpinned_response.data["results"][0]["is_pinned"])
+        self.assertIsNone(unpinned_response.data["results"][0]["pinned_at"])
+        self.assertEqual(
+            [item["id"] for item in newest_first_response.data["results"]],
+            [newest_pin.id, newest_by_occurrence.id, unpinned.id],
+        )
+        self.assertEqual(
+            [item["id"] for item in oldest_first_response.data["results"]],
+            [newest_by_occurrence.id, newest_pin.id, unpinned.id],
+        )
+
+    def test_pin_filter_keeps_default_archived_exclusion(self):
+        current = Observation.objects.create(
+            contact=self.contact,
+            body="Current pin.",
+        )
+        archived = Observation.objects.create(
+            contact=self.contact,
+            body="Archived pin.",
+            status=OBSERVATION_STATUS_ARCHIVED,
+        )
+        current.pin()
+        archived.pin()
+        url = reverse(
+            "contact-observations-list",
+            kwargs={"contact_pk": self.contact.id},
+        )
+
+        default_response = self.client.get(url, {"pinned": "true"})
+        archived_response = self.client.get(
+            url,
+            {"pinned": "true", "status": OBSERVATION_STATUS_ARCHIVED},
+        )
+
+        self.assertEqual(
+            [item["id"] for item in default_response.data["results"]],
+            [current.id],
+        )
+        self.assertEqual(
+            [item["id"] for item in archived_response.data["results"]],
+            [archived.id],
+        )
+
+    def test_invalid_pin_filter_is_ignored_and_invalid_ordering_is_rejected(self):
+        Observation.objects.create(contact=self.contact, body="An observation.")
+        url = reverse(
+            "contact-observations-list",
+            kwargs={"contact_pk": self.contact.id},
+        )
+
+        invalid_boolean_response = self.client.get(url, {"pinned": "sometimes"})
+        invalid_ordering_response = self.client.get(url, {"ordering": "id"})
+
+        self.assertEqual(invalid_boolean_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(invalid_boolean_response.data["count"], 1)
+        self.assertEqual(
+            invalid_ordering_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
         )
 
     def test_pagination_is_stable_when_meaningful_timestamps_match(self):

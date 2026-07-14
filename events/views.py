@@ -42,7 +42,7 @@ RELATED_EVENT_REASON_SCORE_FIELDS = (
 class EventViewSet(ModelViewSet):
     '''
     POST /api/events/ -> Create a new event with optional participant contact IDs
-    GET /api/events/ -> List authenticated user's events ordered by timestamp descending
+    GET /api/events/ -> List authenticated user's events, newest-first by default
     PATCH /api/events/{id}/ -> Update mutable event fields and replace participants
     DELETE /api/events/{id}/ -> Delete an event and cascade participants/journals
     '''

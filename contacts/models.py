@@ -1,3 +1,8 @@
+import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -76,6 +81,12 @@ class Contact(models.Model):
     address = models.TextField(blank=True)
     birthday = models.DateField(null=True, blank=True)
     first_met_date = models.DateField(null=True, blank=True)
+    preferred_name = models.CharField(max_length=150, blank=True)
+    gender_identity = models.CharField(max_length=150, blank=True)
+    pronouns = models.CharField(max_length=100, blank=True)
+    timezone = models.CharField(max_length=64, blank=True)
+    met_through = models.CharField(max_length=255, blank=True)
+    met_location = models.CharField(max_length=255, blank=True)
 
     occupation = models.ForeignKey(
         Occupation,
@@ -129,10 +140,178 @@ class Contact(models.Model):
     def __str__(self):
         return f'{self.first_name} {self.last_name}'.strip()
 
-class Fact(models.Model):
+    def clean(self):
+        super().clean()
+        if self.timezone:
+            try:
+                ZoneInfo(self.timezone)
+            except ZoneInfoNotFoundError as exc:
+                raise ValidationError({
+                    'timezone': 'Enter a valid IANA time zone.'
+                }) from exc
+
+
+class ContactMethod(models.Model):
+    KIND_EMAIL = 'email'
+    KIND_PHONE = 'phone'
+    KIND_CHOICES = [
+        (KIND_EMAIL, 'Email'),
+        (KIND_PHONE, 'Phone'),
+    ]
+
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name='contact_methods',
+    )
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    label = models.CharField(max_length=80, blank=True)
+    value = models.CharField(max_length=320)
+    is_primary = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'contact_methods'
+        ordering = ['kind', '-is_primary', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['contact', 'kind'],
+                condition=Q(is_primary=True),
+                name='unique_primary_contact_method_kind',
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.kind == self.KIND_EMAIL:
+            validate_email(self.value)
+        elif (
+            self.kind == self.KIND_PHONE
+            and (
+                not re.fullmatch(r'^\+?[0-9().\- xX]{7,32}$', self.value)
+                or len(re.sub(r'\D', '', self.value)) < 7
+            )
+        ):
+            raise ValidationError({'value': 'Enter a valid phone number.'})
+
+
+class ContactAddress(models.Model):
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name='addresses',
+    )
+    label = models.CharField(max_length=80, blank=True)
+    line_1 = models.CharField(max_length=255)
+    line_2 = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=120, blank=True)
+    region = models.CharField(max_length=120, blank=True)
+    postal_code = models.CharField(max_length=32, blank=True)
+    country_code = models.CharField(max_length=2, blank=True)
+    is_primary = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'contact_addresses'
+        ordering = ['-is_primary', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['contact'],
+                condition=Q(is_primary=True),
+                name='unique_primary_contact_address',
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        self.country_code = self.country_code.upper()
+        if self.country_code and (
+            len(self.country_code) != 2 or not self.country_code.isalpha()
+        ):
+            raise ValidationError({
+                'country_code': 'Use a two-letter country code.'
+            })
+
+
+class ContactEmployment(models.Model):
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name='employment',
+    )
+    title = models.CharField(max_length=255)
+    organization = models.CharField(max_length=255, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    is_current = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'contact_employment'
+        ordering = ['-is_current', '-start_date', 'id']
+
+    def clean(self):
+        super().clean()
+        _validate_profile_date_range(self.start_date, self.end_date, self.is_current)
+
+
+class ContactEducation(models.Model):
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        related_name='education',
+    )
+    credential = models.CharField(max_length=255, blank=True)
+    field_of_study = models.CharField(max_length=255, blank=True)
+    institution = models.CharField(max_length=255)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    is_current = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'contact_education'
+        ordering = ['-is_current', '-start_date', 'id']
+
+    def clean(self):
+        super().clean()
+        _validate_profile_date_range(self.start_date, self.end_date, self.is_current)
+
+
+def _validate_profile_date_range(start_date, end_date, is_current):
+    if start_date and end_date and end_date < start_date:
+        raise ValidationError({
+            'end_date': 'End date must be on or after start date.'
+        })
+    if is_current and end_date:
+        raise ValidationError({
+            'end_date': 'A current entry cannot have an end date.'
+        })
+
+class PinnableContextModel(models.Model):
+    pinned_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        abstract = True
+
+    @property
+    def is_pinned(self):
+        return self.pinned_at is not None
+
+    def pin(self):
+        if self.pinned_at is None:
+            self.pinned_at = timezone.now()
+            self.save(update_fields=['pinned_at'])
+        return self
+
+    def unpin(self):
+        if self.pinned_at is not None:
+            self.pinned_at = None
+            self.save(update_fields=['pinned_at'])
+        return self
+
+
+class Fact(PinnableContextModel):
     '''
     Structured, categorized information known about a contact.
     category_id references a node in FactCategory.
+    label stores an optional concise key for the fact.
     detail_value stores the literal content of the fact.
     '''
     contact = models.ForeignKey(
@@ -147,17 +326,24 @@ class Fact(models.Model):
         blank=True,
         related_name='facts'
     )
+    label = models.CharField(max_length=120, null=True, blank=True)
     detail_value = models.TextField()
     is_conversation_cue = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'facts'
         ordering = ['id']
+        indexes = [
+            models.Index(
+                fields=['contact', '-pinned_at'],
+                name='fact_contact_pinned_idx',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.contact} - {self.category}: {self.detail_value}'
 
-class Observation(models.Model):
+class Observation(PinnableContextModel):
     '''
     Freeform observation attached to a contact and styled by an ObservationMarker.
     is_active allows soft-hiding observations without deleting them.
@@ -204,6 +390,12 @@ class Observation(models.Model):
     class Meta:
         db_table = 'observations'
         ordering = ['-created_timestamp']
+        indexes = [
+            models.Index(
+                fields=['contact', '-pinned_at'],
+                name='obs_contact_pinned_idx',
+            ),
+        ]
     
     def __str__(self):
         return f'Observation for {self.contact} - {self.created_timestamp:%Y-%m-%d}'

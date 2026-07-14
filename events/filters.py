@@ -16,6 +16,13 @@ class EventFilter(django_filters.FilterSet):
     participants = django_filters.CharFilter(method='filter_participants')
     journaled = django_filters.BooleanFilter(method='filter_journaled')
     has_mood = django_filters.BooleanFilter(method='filter_has_mood')
+    ordering = django_filters.ChoiceFilter(
+        choices=(
+            ('event_timestamp', 'Event timestamp (oldest first)'),
+            ('-event_timestamp', 'Event timestamp (newest first)'),
+        ),
+        method='filter_ordering',
+    )
 
     class Meta:
         model = Event
@@ -31,6 +38,7 @@ class EventFilter(django_filters.FilterSet):
             'participants',
             'journaled',
             'has_mood',
+            'ordering',
         ]
 
     def filter_search(self, queryset, name, value):
@@ -89,6 +97,13 @@ class EventFilter(django_filters.FilterSet):
         if value:
             return queryset.filter(mood__isnull=False)
         return queryset.filter(mood__isnull=True)
+
+    def filter_ordering(self, queryset, name, value):
+        if value == 'event_timestamp':
+            return queryset.order_by('event_timestamp', 'id')
+        if value == '-event_timestamp':
+            return queryset.order_by('-event_timestamp', '-id')
+        return queryset
 
     def _parse_datetime_value(self, value):
         if value == 'now':

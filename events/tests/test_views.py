@@ -550,6 +550,47 @@ class EventViewSetTests(TestCase):
         event_ids = {event["id"] for event in after_response.data["results"]}
         self.assertEqual(event_ids, {future_event.id})
 
+    def test_filter_supports_nearest_first_timestamp_ordering(self):
+        now = timezone.now()
+        contact = ContactFactory(user=self.user)
+        nearest_event = EventFactory(
+            user=self.user,
+            event_timestamp=now + timedelta(days=2),
+        )
+        later_event = EventFactory(
+            user=self.user,
+            event_timestamp=now + timedelta(days=12),
+        )
+        EventParticipant.objects.create(event=nearest_event, contact=contact)
+        EventParticipant.objects.create(event=later_event, contact=contact)
+        EventFactory(
+            user=self.user,
+            event_timestamp=now + timedelta(days=1),
+        )
+        other_user_event = EventFactory(
+            user=self.other_user,
+            event_timestamp=now + timedelta(days=1),
+        )
+        EventParticipant.objects.create(
+            event=other_user_event,
+            contact=ContactFactory(user=self.other_user),
+        )
+
+        response = self.client.get(
+            reverse("event-list"),
+            {
+                "event_after": now.isoformat(),
+                "participants": str(contact.id),
+                "ordering": "event_timestamp",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [event["id"] for event in response.data["results"]],
+            [nearest_event.id, later_event.id],
+        )
+
     def test_filter_supports_now_keyword(self):
         past_event = EventFactory(
             user=self.user,

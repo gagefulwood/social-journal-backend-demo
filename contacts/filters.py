@@ -1,6 +1,35 @@
 import django_filters
-from django.db.models import Q
+from django.db.models import F, Q
 from .models import Contact, Fact, Observation
+
+
+class PinnableContextFilterSet(django_filters.FilterSet):
+    pinned = django_filters.BooleanFilter(method='filter_pinned')
+    ordering = django_filters.ChoiceFilter(
+        choices=(
+            ('pinned_at', 'Pinned timestamp (oldest first)'),
+            ('-pinned_at', 'Pinned timestamp (newest first)'),
+        ),
+        method='filter_ordering',
+    )
+
+    def filter_pinned(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.filter(pinned_at__isnull=not value)
+
+    def filter_ordering(self, queryset, name, value):
+        if value == 'pinned_at':
+            return queryset.order_by(
+                F('pinned_at').asc(nulls_last=True),
+                'id',
+            )
+        if value == '-pinned_at':
+            return queryset.order_by(
+                F('pinned_at').desc(nulls_last=True),
+                '-id',
+            )
+        return queryset
 
 class ContactFilter(django_filters.FilterSet):
     '''
@@ -17,7 +46,7 @@ class ContactFilter(django_filters.FilterSet):
         model = Contact
         fields = ['occupation', 'relation']
 
-class ObservationFilter(django_filters.FilterSet):
+class ObservationFilter(PinnableContextFilterSet):
     '''
     FilterSet for contact observations.
     '''
@@ -52,20 +81,33 @@ class ObservationFilter(django_filters.FilterSet):
 
     class Meta:
         model = Observation
-        fields = ['status', 'observation_type', 'marker', 'event']
+        fields = [
+            'status',
+            'observation_type',
+            'marker',
+            'event',
+            'pinned',
+            'ordering',
+        ]
 
 
-class FactFilter(django_filters.FilterSet):
+class FactFilter(PinnableContextFilterSet):
     search = django_filters.CharFilter(method='filter_search')
 
     class Meta:
         model = Fact
-        fields = ['category', 'is_conversation_cue']
+        fields = [
+            'category',
+            'is_conversation_cue',
+            'pinned',
+            'ordering',
+        ]
 
     def filter_search(self, queryset, name, value):
         if not value:
             return queryset
         return queryset.filter(
-            Q(detail_value__icontains=value)
+            Q(label__icontains=value)
+            | Q(detail_value__icontains=value)
             | Q(category__name__icontains=value)
         )
