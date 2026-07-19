@@ -3,7 +3,7 @@ from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from events.models import Event
-from journals.models import Exercise, ExerciseStep, Log, Reflection
+from journals.models import Log, Reflection
 from users.models import Users
 
 
@@ -54,24 +54,3 @@ class ReflectionFactory(DjangoModelFactory):
     title = factory.Sequence(lambda n: f'Reflection {n}')
     clarity_check = 'Clear'
     data = {'prompt': 'What happened?', 'response': 'A useful response.'}
-
-
-class ExerciseFactory(DjangoModelFactory):
-    class Meta:
-        model = Exercise
-
-    user = factory.SubFactory(UserFactory)
-    event = factory.SubFactory(EventFactory, user=factory.SelfAttribute('..user'))
-    title = factory.Sequence(lambda n: f'Exercise {n}')
-    pre_measurement = 2
-    post_measurement = 5
-
-
-class ExerciseStepFactory(DjangoModelFactory):
-    class Meta:
-        model = ExerciseStep
-
-    exercise = factory.SubFactory(ExerciseFactory)
-    display_order = factory.Sequence(lambda n: n + 1)
-    prompt = 'Notice the thought.'
-    response = 'I noticed it.'

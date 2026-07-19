@@ -193,11 +193,11 @@ class DashboardMVPWidgetTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         stats = response.data["activity_stats"]
-        self.assertEqual(stats["entries_total"], 4)
+        self.assertEqual(stats["entries_total"], 3)
         self.assertEqual(stats["entries_30d"], 3)
         self.assertEqual(
             stats["entries_by_kind_30d"],
-            {"log": 2, "reflection": 1, "exercise": 0},
+            {"log": 2, "reflection": 1},
         )
         self.assertEqual(stats["events_30d"], 2)
         self.assertEqual(stats["current_streak_days"], 2)

@@ -5,8 +5,6 @@ from lookups.models import EntryTag
 
 from .factories import (
     EventFactory,
-    ExerciseFactory,
-    ExerciseStepFactory,
     LogFactory,
     ReflectionFactory,
     UserFactory,
@@ -36,23 +34,6 @@ class JournalModelTests(TestCase):
         self.assertEqual(reflection.subtype, 'standard')
         self.assertEqual(str(reflection), 'Dinner reflection')
 
-    def test_exercise_measurement_delta_and_str(self):
-        exercise = ExerciseFactory(
-            title='Breathing exercise',
-            pre_measurement=3,
-            post_measurement=-1,
-        )
-
-        self.assertEqual(exercise.measurement_delta, -4)
-        self.assertEqual(str(exercise), 'Breathing exercise')
-
-    def test_exercise_steps_order_by_display_order(self):
-        exercise = ExerciseFactory()
-        later = ExerciseStepFactory(exercise=exercise, display_order=2)
-        earlier = ExerciseStepFactory(exercise=exercise, display_order=1)
-
-        self.assertEqual(list(exercise.steps.all()), [earlier, later])
-
     def test_log_tags_accept_entry_tag_rows(self):
         user = UserFactory()
         event = EventFactory(user=user)
@@ -71,11 +52,8 @@ class JournalManagerTests(TestCase):
         other_user = UserFactory()
         log = LogFactory(user=user)
         reflection = ReflectionFactory(user=user)
-        exercise = ExerciseFactory(user=user)
         LogFactory(user=other_user)
         ReflectionFactory(user=other_user)
-        ExerciseFactory(user=other_user)
 
         self.assertEqual(list(Log.objects.for_user(user)), [log])
         self.assertEqual(list(Reflection.objects.for_user(user)), [reflection])
-        self.assertEqual(list(Exercise.objects.for_user(user)), [exercise])

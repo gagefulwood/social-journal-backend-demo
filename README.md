@@ -117,7 +117,7 @@ social-journal-backend/
 ├── users/           # Auth, JWT, MFA, user profile
 ├── contacts/        # Contact management
 ├── events/          # Event logging
-├── journals/        # Logs, reflections, and exercises
+├── journals/        # Logs and reflections
 ├── media/           # Uploads and contact profile pictures
 ├── dashboard/       # Aggregated dashboard data
 ├── lookups/         # Lookup tables (moods, categories, etc.)
@@ -151,15 +151,24 @@ Preview the records without saving anything:
 python manage.py populate_account "gage@example.com" --dry-run
 ```
 
-The command adds demo Contacts, categorized Facts, typed and statused Observations,
-Events, participants, Logs, Reflections, and Exercises. Its Event history includes
-ten shared moments in each of four rolling 30-day periods, distributed evenly
-across the five demo Contacts. Fact categories are scoped to the selected account;
-standard Observation markers are reused when available. Alex's demo context includes
-three pinned Facts, three pinned Observations, and unpinned records with deterministic
-pin ordering so both Context management and Overview carousel states are visible. The
-command never creates a user or deletes existing data. Ambiguous full names are
-rejected; use the account's username or email instead.
+The command adds demo Contacts, categorized Facts, typed and statused
+Observations, Events, participants, and every current Log and Reflection format.
+It creates 21 completed Journals for pagination/overflow, seven meaningful
+drafts, mixed Event/Contact linkage, one account-owned Journal lookup, and
+published carry-forward context. If the account already owns uploaded media
+whose filename begins with `demo-`, those assets are referenced for
+non-sensitive/cover and sensitive attachment states without copying files.
+Its Event history includes ten shared moments in each of four rolling 30-day
+periods, distributed evenly across the five demo Contacts. Fact categories are
+scoped to the selected account; standard Observation markers are reused when
+available. Alex's demo context includes three pinned Facts, three pinned
+Observations, and unpinned records with deterministic pin ordering so both
+Context management and Overview carousel states are visible. The command never
+creates a user or deletes existing data. Ambiguous full names are rejected; use
+the account's username or email instead.
+
+The current Journal API, lifecycle, enum values, nested payloads, and legacy
+compatibility behavior are documented in [docs/JOURNALS_API.md](docs/JOURNALS_API.md).
 
 ## Contact Context Pinning
 

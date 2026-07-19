@@ -1,4 +1,5 @@
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.db import connection
@@ -11,7 +12,8 @@ from rest_framework.test import APIClient
 
 from contacts.tests.factories import ContactFactory, UserFactory
 from events.models import Event, EventParticipant
-from journals.models import Log
+from events.views import EventViewSet
+from journals.models import Log, Reflection
 from lookups.models import ContextCategory, InteractionMode, Mood
 
 from .factories import EventFactory
@@ -95,6 +97,64 @@ class EventViewSetTests(TestCase):
         self.assertEqual(journaled.status_code, status.HTTP_200_OK)
         self.assertTrue(journaled.data["journaled"])
         self.assertEqual(journaled.data["journals"]["logs"][0]["title"], "Log")
+
+    def test_retrieve_bounds_journal_previews_and_returns_full_counts(self):
+        event = EventFactory(user=self.user)
+        now = timezone.now()
+        logs = []
+        reflections = []
+        for index in range(6):
+            log = Log.objects.create(
+                user=self.user,
+                event=event,
+                title=f"Log {index}",
+            )
+            reflection = Reflection.objects.create(
+                user=self.user,
+                event=event,
+                title=f"Reflection {index}",
+            )
+            updated_at = now + timedelta(minutes=index)
+            Log.objects.filter(pk=log.pk).update(
+                created_timestamp=updated_at,
+                updated_timestamp=updated_at,
+            )
+            Reflection.objects.filter(pk=reflection.pk).update(
+                created_timestamp=updated_at,
+                updated_timestamp=updated_at,
+            )
+            logs.append(log)
+            reflections.append(reflection)
+
+        response = self.client.get(reverse("event-detail", args=[event.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        journals = response.data["journals"]
+        self.assertEqual(journals["log_count"], 6)
+        self.assertEqual(journals["reflection_count"], 6)
+        self.assertEqual(
+            [item["id"] for item in journals["logs"]],
+            [log.id for log in reversed(logs[-4:])],
+        )
+        self.assertEqual(
+            [item["id"] for item in journals["reflections"]],
+            [reflection.id for reflection in reversed(reflections[-4:])],
+        )
+
+    def test_list_queryset_does_not_prefetch_journal_collections(self):
+        view = EventViewSet()
+        view.action = 'list'
+        view.request = SimpleNamespace(user=self.user)
+
+        queryset = view.get_queryset()
+
+        prefetch_targets = {
+            getattr(item, 'prefetch_through', item)
+            for item in queryset._prefetch_related_lookups
+        }
+        self.assertEqual(prefetch_targets, {'participants__contact'})
+        self.assertIn('journal_log_exists', queryset.query.annotations)
+        self.assertIn('journal_reflection_exists', queryset.query.annotations)
 
     def test_related_returns_404_for_other_users_event(self):
         other_event = EventFactory(user=self.other_user)

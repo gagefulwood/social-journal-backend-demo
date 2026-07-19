@@ -47,7 +47,7 @@ class Event(models.Model):
     Event model representing logged social event journals.
     context_category links with ContextCategory lookup (social, pofessional, family)
     Participants are linked with EventParticipant junction model
-    Journals are linked by Log, Reflection, and Exercise models.
+    Current Journals are linked by Log and Reflection models.
     '''
     user = models.ForeignKey(
         Users,
@@ -98,11 +98,15 @@ class Event(models.Model):
 
     @property
     def journaled(self):
-        return (
-            self.logs.exists()
-            or self.reflections.exists()
-            or self.exercises.exists()
+        annotated_logs = getattr(self, 'journal_log_exists', None)
+        annotated_reflections = getattr(
+            self,
+            'journal_reflection_exists',
+            None,
         )
+        if annotated_logs is not None and annotated_reflections is not None:
+            return bool(annotated_logs or annotated_reflections)
+        return self.logs.exists() or self.reflections.exists()
     
     def __str__(self):
         return f'{self.title} ({self.event_timestamp: %Y-%m-%d})'

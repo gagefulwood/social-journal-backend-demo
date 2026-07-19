@@ -91,7 +91,7 @@ class EventModelTests(TestCase):
 
         self.assertTrue(event.journaled)
 
-    def test_journaled_is_true_with_exercise(self):
+    def test_retained_exercise_does_not_mark_event_journaled(self):
         event = EventFactory()
         Exercise.objects.create(
             user=event.user,
@@ -101,7 +101,7 @@ class EventModelTests(TestCase):
             post_measurement=2,
         )
 
-        self.assertTrue(event.journaled)
+        self.assertFalse(event.journaled)
 
     def test_upcoming_returns_next_five_events_for_user(self):
         user = UserFactory()

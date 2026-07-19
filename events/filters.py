@@ -3,7 +3,7 @@ from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from journals.models import Exercise, Log, Reflection
+from journals.models import Log, Reflection
 
 from .models import Event
 
@@ -81,16 +81,12 @@ class EventFilter(django_filters.FilterSet):
         queryset = queryset.annotate(
             has_log=Exists(Log.objects.filter(event_id=OuterRef('pk'))),
             has_reflection=Exists(Reflection.objects.filter(event_id=OuterRef('pk'))),
-            has_exercise=Exists(Exercise.objects.filter(event_id=OuterRef('pk'))),
         )
         if value:
-            return queryset.filter(
-                Q(has_log=True) | Q(has_reflection=True) | Q(has_exercise=True)
-            )
+            return queryset.filter(Q(has_log=True) | Q(has_reflection=True))
         return queryset.filter(
             has_log=False,
             has_reflection=False,
-            has_exercise=False,
         )
 
     def filter_has_mood(self, queryset, name, value):

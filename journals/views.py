@@ -1,229 +1,805 @@
+from datetime import timedelta
+
+from django.db import transaction
+from django.db.models import (
+    Case,
+    CharField,
+    Count,
+    DurationField,
+    ExpressionWrapper,
+    F,
+    IntegerField,
+    Q,
+    Sum,
+    TextField,
+    UUIDField,
+    Value,
+    When,
+)
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics, viewsets
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework import generics, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.pagination import StandardResultsPagination
 from core.permissions import IsOwner
-from .filters import ExerciseFilter, LogFilter, ReflectionFilter
-from .models import Exercise, Log, Reflection
-from .serializers import (
-    CombinedJournalItemSerializer,
-    ExerciseListSerializer,
-    ExerciseSerializer,
-    LogListSerializer,
-    LogSerializer,
-    ReflectionListSerializer,
-    ReflectionSerializer,
+from lookups.models import (
+    EmotionState,
+    EpisodeCategory,
+    EpisodeCharacteristic,
+    EpisodeContextTag,
+    InteractionDynamic,
+    SocialEnergyFactor,
 )
 
+from .models import Log, Reflection, ReflectionAttachment
+from .serializers import (
+    EmotionStateSerializer,
+    EpisodeCategorySerializer,
+    EpisodeCharacteristicSerializer,
+    EpisodeContextTagSerializer,
+    HubItemSerializer,
+    InteractionDynamicSerializer,
+    LogPatternSerializer,
+    LogSerializer,
+    ReflectionSerializer,
+    SocialEnergyFactorSerializer,
+)
+from .services import (
+    JOURNAL_STEPS,
+    complete_journal,
+    normalize_log_format_breakdown_key,
+)
 
-class JournalKindViewSet(viewsets.ModelViewSet):
+SOCIAL_BATTERY_SUMMARY_LABELS = {
+    'reduced': 'Lower battery',
+    'unchanged': 'Steady battery',
+    'increased': 'Higher battery',
+}
+SOCIAL_MOOD_SUMMARY_LABELS = {
+    'worse': 'mood lower',
+    'unchanged': 'mood unchanged',
+    'improved': 'mood improved',
+}
+SOCIAL_BEHAVIOR_SUMMARY_LABELS = {
+    'quieter': 'became quieter',
+    'unchanged': 'behavior unchanged',
+    'more_social': 'became more social',
+    'withdrew': 'withdrew',
+}
+
+
+class RevisionConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = 'This journal was updated elsewhere. Refresh and try again.'
+    default_code = 'revision_conflict'
+
+
+class CanonicalJournalViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOwner]
-    filter_backends = [DjangoFilterBackend]
     pagination_class = StandardResultsPagination
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return self.queryset_model.objects.none()
-        return self.queryset_model.objects.for_user(self.request.user).select_related(
-            'event',
-            'user',
+        queryset = (
+            self.queryset_model.objects.for_user(self.request.user)
+            .select_related('event', 'primary_contact')
+        )
+        queryset = self._with_related(queryset)
+        status_value = self.request.query_params.get('status')
+        format_value = self.request.query_params.get('format')
+        event_id = self.request.query_params.get('event')
+        contact_id = self.request.query_params.get('contact')
+        search = self.request.query_params.get('search')
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        if format_value:
+            queryset = queryset.filter(format=format_value)
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+        if contact_id:
+            queryset = self._filter_contact(queryset, contact_id)
+        if search:
+            queryset = queryset.filter(title__icontains=search.strip())
+        return queryset
+
+    def _with_related(self, queryset):
+        return queryset
+
+    def _filter_contact(self, queryset, contact_id):
+        return queryset.filter(primary_contact_id=contact_id)
+
+    @transaction.atomic
+    def partial_update(self, request, *args, **kwargs):
+        instance = (
+            self.queryset_model.objects.for_user(request.user)
+            .select_for_update()
+            .get(pk=kwargs['pk'])
+        )
+        self.check_object_permissions(request, instance)
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        if serializer.validated_data['expected_revision'] != instance.revision:
+            raise RevisionConflict()
+        serializer.save()
+        instance = self.get_queryset().get(pk=instance.pk)
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def complete(self, request, *args, **kwargs):
+        instance = (
+            self.queryset_model.objects.for_user(request.user)
+            .select_for_update()
+            .get(pk=kwargs['pk'])
+        )
+        self.check_object_permissions(request, instance)
+        if instance.status == instance.STATUS_COMPLETED:
+            return Response(self.get_serializer(instance).data)
+        expected_revision = request.data.get('expected_revision')
+        if expected_revision is None:
+            raise ValidationError({
+                'expected_revision': 'This field is required.'
+            })
+        try:
+            expected_revision = int(expected_revision)
+        except (TypeError, ValueError):
+            raise ValidationError({
+                'expected_revision': 'Enter a valid revision number.'
+            })
+        if expected_revision != instance.revision:
+            raise RevisionConflict()
+        complete_journal(instance)
+        instance = self.get_queryset().get(pk=instance.pk)
+        return Response(self.get_serializer(instance).data)
+
+
+class LogViewSet(CanonicalJournalViewSet):
+    queryset_model = Log
+    serializer_class = LogSerializer
+
+    def _with_related(self, queryset):
+        return queryset.select_related(
+            'episode_detail__category',
+            'social_energy_detail',
+            'sentiment_detail__before_state',
+            'sentiment_detail__after_state',
+        ).prefetch_related(
+            'tags',
+            'episode_detail__characteristics',
+            'episode_detail__context_tags',
+            'social_energy_detail__factors',
+            'sentiment_detail__dynamics',
         )
 
-    def get_serializer_class(self):
-        if self.action == 'list':
-            return self.list_serializer_class
-        return self.detail_serializer_class
+
+class ReflectionViewSet(CanonicalJournalViewSet):
+    queryset_model = Reflection
+    serializer_class = ReflectionSerializer
+
+    def _with_related(self, queryset):
+        return queryset.select_related(
+            'cover_attachment__media_asset__media_type',
+            'interaction_detail',
+            'moment_detail',
+            'emotional_detail',
+            'free_detail',
+        ).prefetch_related(
+            'contacts',
+            'attachments__media_asset__media_type',
+            'emotional_detail__emotions',
+            'emotional_detail__manifestations',
+            'fact_drafts',
+            'observation_drafts',
+        )
+
+    def _filter_contact(self, queryset, contact_id):
+        return queryset.filter(
+            Q(primary_contact_id=contact_id) | Q(contacts__id=contact_id)
+        ).distinct()
+
+
+class JournalLookupViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return self.queryset_model.objects.none()
+        return self.queryset_model.objects.for_user(self.request.user).order_by(
+            '-is_system_default',
+            'name',
+        )
 
     def perform_create(self, serializer):
-        event = self._validated_event(serializer)
-        serializer.save(user=self.request.user, event=event)
-
-    def perform_update(self, serializer):
-        event = serializer.validated_data.get('event', serializer.instance.event)
-        self._validate_event_owner(event)
-        serializer.save()
-
-    def _validated_event(self, serializer):
-        event = serializer.validated_data.get('event')
-        if event is None:
-            raise ValidationError({'event': 'This field is required.'})
-        self._validate_event_owner(event)
-        return event
-
-    def _validate_event_owner(self, event):
-        if event.user_id != self.request.user.id:
-            raise PermissionDenied(
-                'You do not have permission to add a journal entry to this event.'
-            )
+        serializer.save(
+            user=self.request.user,
+            is_system_default=False,
+            code='',
+        )
 
 
-class LogViewSet(JournalKindViewSet):
-    queryset_model = Log
-    detail_serializer_class = LogSerializer
-    list_serializer_class = LogListSerializer
-    filterset_class = LogFilter
+class EpisodeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = EpisodeCategorySerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
-        return super().get_queryset().select_related('mood').prefetch_related('tags')
+        if getattr(self, 'swagger_fake_view', False):
+            return EpisodeCategory.objects.none()
+        return EpisodeCategory.objects.for_user(self.request.user).order_by('name')
 
 
-class ReflectionViewSet(JournalKindViewSet):
-    queryset_model = Reflection
-    detail_serializer_class = ReflectionSerializer
-    list_serializer_class = ReflectionListSerializer
-    filterset_class = ReflectionFilter
+class EpisodeCharacteristicViewSet(JournalLookupViewSet):
+    queryset_model = EpisodeCharacteristic
+    serializer_class = EpisodeCharacteristicSerializer
 
 
-class ExerciseViewSet(JournalKindViewSet):
-    queryset_model = Exercise
-    detail_serializer_class = ExerciseSerializer
-    list_serializer_class = ExerciseListSerializer
-    filterset_class = ExerciseFilter
+class EpisodeContextTagViewSet(JournalLookupViewSet):
+    queryset_model = EpisodeContextTag
+    serializer_class = EpisodeContextTagSerializer
 
-    def get_queryset(self):
-        return super().get_queryset().prefetch_related('steps')
+
+class SocialEnergyFactorViewSet(JournalLookupViewSet):
+    queryset_model = SocialEnergyFactor
+    serializer_class = SocialEnergyFactorSerializer
+
+
+class EmotionStateViewSet(JournalLookupViewSet):
+    queryset_model = EmotionState
+    serializer_class = EmotionStateSerializer
+
+
+class InteractionDynamicViewSet(JournalLookupViewSet):
+    queryset_model = InteractionDynamic
+    serializer_class = InteractionDynamicSerializer
 
 
 class JournalFeedView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsPagination
-    serializer_class = CombinedJournalItemSerializer
+    serializer_class = HubItemSerializer
+    http_method_names = ['get', 'head', 'options']
+
+    columns = [
+        'id',
+        'family',
+        'format',
+        'status',
+        'title',
+        'summary_primary',
+        'summary_secondary',
+        'summary_tertiary',
+        'event_id',
+        'event_title',
+        'event_start_timestamp',
+        'event_end_timestamp',
+        'event_location',
+        'primary_contact_id',
+        'primary_first_name',
+        'primary_last_name',
+        'occurred_at',
+        'current_step',
+        'revision',
+        'created_timestamp',
+        'updated_timestamp',
+        'completed_at',
+        'media_count',
+        'cover_attachment_id',
+    ]
+
+    def get(self, request, *args, **kwargs):
+        queryset = self._combined_queryset(request)
+        page = self.paginate_queryset(queryset)
+        rows = page if page is not None else list(queryset)
+        items = self._hydrate_rows(rows)
+        serializer = self.get_serializer(items, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def _combined_queryset(self, request):
+        families = self._families(request)
+        logs = Log.objects.for_user(request.user)
+        reflections = Reflection.objects.for_user(request.user)
+        logs, reflections = self._filter_querysets(request, logs, reflections)
+        querysets = []
+        if 'log' in families:
+            querysets.append(self._log_values(logs))
+        if 'reflection' in families:
+            querysets.append(self._reflection_values(reflections))
+        queryset = querysets[0]
+        if len(querysets) == 2:
+            queryset = queryset.union(querysets[1], all=True)
+        ordering = request.query_params.get('ordering', '-updated_timestamp')
+        allowed_ordering = {
+            'updated_timestamp',
+            '-updated_timestamp',
+            'occurred_at',
+            '-occurred_at',
+        }
+        if ordering not in allowed_ordering:
+            raise ValidationError({
+                'ordering': (
+                    'Use updated_timestamp, -updated_timestamp, '
+                    'occurred_at, or -occurred_at.'
+                )
+            })
+        return queryset.order_by(ordering, '-created_timestamp')
+
+    def _families(self, request):
+        raw = request.query_params.get('family')
+        if not raw:
+            return {'log', 'reflection'}
+        families = {value.strip() for value in raw.split(',') if value.strip()}
+        if not families or families - {'log', 'reflection'}:
+            raise ValidationError({
+                'family': 'Use log, reflection, or a comma-separated pair.'
+            })
+        return families
+
+    def _filter_querysets(self, request, logs, reflections):
+        status_value = request.query_params.get('status')
+        format_value = request.query_params.get('format')
+        search = request.query_params.get('search')
+        event_id = request.query_params.get('event')
+        contact_id = request.query_params.get('contact')
+        occurred_after = self._datetime_param(request, 'occurred_after')
+        occurred_before = self._datetime_param(request, 'occurred_before')
+        if status_value:
+            logs = logs.filter(status=status_value)
+            reflections = reflections.filter(status=status_value)
+        if format_value:
+            logs = logs.filter(format=format_value)
+            reflections = reflections.filter(format=format_value)
+        if search:
+            search_value = search.strip()
+            if search_value:
+                logs = logs.filter(self._log_search_query(search_value))
+                reflections = reflections.filter(
+                    self._reflection_search_query(search_value)
+                )
+        if event_id:
+            logs = logs.filter(event_id=event_id)
+            reflections = reflections.filter(event_id=event_id)
+        if contact_id:
+            logs = logs.filter(primary_contact_id=contact_id)
+            reflections = reflections.filter(
+                Q(primary_contact_id=contact_id) | Q(contacts__id=contact_id)
+            ).distinct()
+        if occurred_after:
+            logs = logs.filter(occurred_at__gte=occurred_after)
+            reflections = reflections.filter(occurred_at__gte=occurred_after)
+        if occurred_before:
+            logs = logs.filter(occurred_at__lte=occurred_before)
+            reflections = reflections.filter(occurred_at__lte=occurred_before)
+        return logs, reflections
+
+    def _log_search_query(self, value):
+        social_fields = (
+            Q(social_energy_detail__battery_effect__icontains=value)
+            | Q(social_energy_detail__mood_shift__icontains=value)
+            | Q(social_energy_detail__behavioral_effect__icontains=value)
+            | Q(
+                social_energy_detail__battery_effect__in=(
+                    self._summary_label_codes(
+                        value,
+                        SOCIAL_BATTERY_SUMMARY_LABELS,
+                    )
+                )
+            )
+            | Q(
+                social_energy_detail__mood_shift__in=(
+                    self._summary_label_codes(
+                        value,
+                        SOCIAL_MOOD_SUMMARY_LABELS,
+                    )
+                )
+            )
+            | Q(
+                social_energy_detail__behavioral_effect__in=(
+                    self._summary_label_codes(
+                        value,
+                        SOCIAL_BEHAVIOR_SUMMARY_LABELS,
+                    )
+                )
+            )
+        )
+        return (
+            Q(title__icontains=value)
+            | (
+                Q(format=Log.FORMAT_EPISODE)
+                & Q(episode_detail__category__name__icontains=value)
+            )
+            | (Q(format=Log.FORMAT_SOCIAL_ENERGY) & social_fields)
+            | (
+                Q(format=Log.FORMAT_SENTIMENT)
+                & (
+                    Q(sentiment_detail__before_state__name__icontains=value)
+                    | Q(sentiment_detail__after_state__name__icontains=value)
+                )
+            )
+        )
+
+    def _reflection_search_query(self, value):
+        return (
+            Q(title__icontains=value)
+            | (
+                Q(format=Reflection.FORMAT_INTERACTION)
+                & Q(interaction_detail__topic_or_activity__icontains=value)
+            )
+            | (
+                Q(format=Reflection.FORMAT_MOMENT)
+                & Q(moment_detail__focus_moment__icontains=value)
+            )
+            | (
+                Q(format=Reflection.FORMAT_EMOTIONAL)
+                & Q(emotional_detail__situation__icontains=value)
+            )
+        )
+
+    def _summary_label_codes(self, value, labels):
+        normalized = value.casefold()
+        return [
+            code
+            for code, label in labels.items()
+            if normalized in label.casefold()
+        ]
+
+    def _datetime_param(self, request, name):
+        value = request.query_params.get(name)
+        if not value:
+            return None
+        parsed = parse_datetime(value)
+        if parsed is None:
+            raise ValidationError({name: 'Enter a valid ISO 8601 timestamp.'})
+        return parsed
+
+    def _common_annotations(self, family):
+        return {
+            'family': Value(family, output_field=CharField()),
+            'event_title': F('event__title'),
+            'event_start_timestamp': F('event__event_timestamp'),
+            'event_end_timestamp': F('event__end_timestamp'),
+            'event_location': F('event__location_label'),
+            'primary_first_name': F('primary_contact__first_name'),
+            'primary_last_name': F('primary_contact__last_name'),
+        }
+
+    def _log_values(self, queryset):
+        return (
+            queryset.annotate(
+                **self._common_annotations('log'),
+                summary_primary=Case(
+                    When(
+                        format=Log.FORMAT_EPISODE,
+                        then=F('episode_detail__category__name'),
+                    ),
+                    When(
+                        format=Log.FORMAT_SOCIAL_ENERGY,
+                        then=F('social_energy_detail__battery_effect'),
+                    ),
+                    When(
+                        format=Log.FORMAT_SENTIMENT,
+                        then=F('sentiment_detail__before_state__name'),
+                    ),
+                    default=Value(''),
+                    output_field=TextField(),
+                ),
+                summary_secondary=Case(
+                    When(
+                        format=Log.FORMAT_SOCIAL_ENERGY,
+                        then=F('social_energy_detail__mood_shift'),
+                    ),
+                    When(
+                        format=Log.FORMAT_SENTIMENT,
+                        then=F('sentiment_detail__after_state__name'),
+                    ),
+                    default=Value(''),
+                    output_field=TextField(),
+                ),
+                summary_tertiary=Case(
+                    When(
+                        format=Log.FORMAT_SOCIAL_ENERGY,
+                        then=F('social_energy_detail__behavioral_effect'),
+                    ),
+                    default=Value(''),
+                    output_field=TextField(),
+                ),
+                media_count=Value(0, output_field=IntegerField()),
+                cover_attachment_id=Value(None, output_field=UUIDField()),
+            )
+            .values(*self.columns)
+        )
+
+    def _reflection_values(self, queryset):
+        return (
+            queryset.annotate(
+                **self._common_annotations('reflection'),
+                summary_primary=Case(
+                    When(
+                        format=Reflection.FORMAT_INTERACTION,
+                        then=F('interaction_detail__topic_or_activity'),
+                    ),
+                    When(
+                        format=Reflection.FORMAT_MOMENT,
+                        then=F('moment_detail__focus_moment'),
+                    ),
+                    When(
+                        format=Reflection.FORMAT_EMOTIONAL,
+                        then=F('emotional_detail__situation'),
+                    ),
+                    default=Value(''),
+                    output_field=TextField(),
+                ),
+                summary_secondary=Value('', output_field=TextField()),
+                summary_tertiary=Value('', output_field=TextField()),
+                media_count=Count('attachments', distinct=True),
+            )
+            .values(*self.columns)
+        )
+
+    def _hydrate_rows(self, rows):
+        cover_ids = [
+            row['cover_attachment_id']
+            for row in rows
+            if row['cover_attachment_id']
+        ]
+        covers = {
+            attachment.id: attachment
+            for attachment in ReflectionAttachment.objects.filter(
+                id__in=cover_ids,
+                is_sensitive=False,
+                media_asset__content_type__istartswith='image/',
+            ).select_related('media_asset__media_type')
+        }
+        return [self._hub_item(row, covers) for row in rows]
+
+    def _hub_item(self, row, covers):
+        event = None
+        if row['event_id']:
+            event = {
+                'id': row['event_id'],
+                'title': row['event_title'],
+                'start_timestamp': row['event_start_timestamp'],
+                'end_timestamp': row['event_end_timestamp'],
+                'location': row['event_location'] or None,
+            }
+        primary_contact = None
+        if row['primary_contact_id']:
+            display_name = ' '.join(
+                value
+                for value in (
+                    row['primary_first_name'],
+                    row['primary_last_name'],
+                )
+                if value
+            )
+            primary_contact = {
+                'id': row['primary_contact_id'],
+                'display_name': display_name,
+            }
+        steps = JOURNAL_STEPS.get(row['format'], ['writing'])
+        total_steps = len(steps)
+        if row['status'] == 'completed':
+            completed_steps = total_steps
+        elif row['current_step'] in steps:
+            completed_steps = steps.index(row['current_step'])
+        else:
+            completed_steps = 0
+        cover = self._cover_summary(
+            covers.get(row['cover_attachment_id'])
+        )
+        return {
+            'id': row['id'],
+            'family': row['family'],
+            'format': row['format'],
+            'status': row['status'],
+            'title': row['title'],
+            'summary': self._summary_for(row),
+            'event': event,
+            'primary_contact': primary_contact,
+            'occurred_at': row['occurred_at'],
+            'current_step': row['current_step'],
+            'progress': {
+                'current_step': row['current_step'],
+                'completed_steps': completed_steps,
+                'total_steps': total_steps,
+                'percent': (
+                    round((completed_steps / total_steps) * 100)
+                    if total_steps
+                    else 0
+                ),
+            },
+            'revision': row['revision'],
+            'created_timestamp': row['created_timestamp'],
+            'updated_timestamp': row['updated_timestamp'],
+            'completed_at': row['completed_at'],
+            'media_count': row['media_count'],
+            'cover': cover,
+        }
+
+    def _summary_for(self, row):
+        primary = row['summary_primary'] or ''
+        secondary = row['summary_secondary'] or ''
+        tertiary = row['summary_tertiary'] or ''
+        journal_format = row['format']
+        if journal_format == Log.FORMAT_EPISODE:
+            summary = f'Category: {primary}' if primary else ''
+        elif journal_format == Log.FORMAT_SOCIAL_ENERGY:
+            summary = ' · '.join(
+                part
+                for part in (
+                    SOCIAL_BATTERY_SUMMARY_LABELS.get(primary, ''),
+                    SOCIAL_MOOD_SUMMARY_LABELS.get(secondary, ''),
+                    SOCIAL_BEHAVIOR_SUMMARY_LABELS.get(tertiary, ''),
+                )
+                if part
+            )
+        elif journal_format == Log.FORMAT_SENTIMENT:
+            if primary and secondary:
+                summary = f'{primary} → {secondary}'
+            else:
+                summary = primary or secondary
+        elif journal_format == Reflection.FORMAT_INTERACTION:
+            summary = f'Topic: {primary}' if primary else ''
+        elif journal_format == Reflection.FORMAT_MOMENT:
+            summary = f'Focus: {primary}' if primary else ''
+        elif journal_format == Reflection.FORMAT_EMOTIONAL:
+            summary = f'Feeling context: {primary}' if primary else ''
+        else:
+            summary = ''
+        return self._bounded_summary(summary)
+
+    def _bounded_summary(self, value):
+        summary = ' '.join(str(value or '').split())
+        if len(summary) <= 160:
+            return summary
+        return f'{summary[:159].rstrip()}…'
+
+    def _cover_summary(self, attachment):
+        if (
+            attachment is None
+            or attachment.is_sensitive
+            or not attachment.media_asset.content_type.lower().startswith(
+                'image/'
+            )
+        ):
+            return None
+        media = attachment.media_asset
+        return {
+            'attachment_id': attachment.id,
+            'media_asset_id': media.id,
+            'media_type': media.media_type.name if media.media_type else None,
+            'file_url': media.file.url if media.file else '',
+            'alt_text': media.alt_text,
+        }
+
+
+class LogPatternView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = LogPatternSerializer
     http_method_names = ['get', 'head', 'options']
 
     def get(self, request, *args, **kwargs):
-        items = self._combined_items(request)
-        page = self.paginate_queryset(items)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = self.get_serializer(items, many=True)
-        return Response(serializer.data)
-
-    def _combined_items(self, request):
-        kinds = self._requested_kinds(request)
-        items = []
-        if 'log' in kinds:
-            items.extend(self._log_items(self._filtered_log_queryset(request)))
-        if 'reflection' in kinds:
-            items.extend(
-                self._reflection_items(self._filtered_reflection_queryset(request))
-            )
-        if 'exercise' in kinds:
-            items.extend(self._exercise_items(self._filtered_exercise_queryset(request)))
-        return sorted(
-            items,
-            key=lambda item: item['created_timestamp'],
-            reverse=True,
+        try:
+            days = int(request.query_params.get('days', 30))
+        except (TypeError, ValueError):
+            raise ValidationError({'days': 'Enter a whole number.'})
+        if days < 1 or days > 365:
+            raise ValidationError({'days': 'Use a value from 1 through 365.'})
+        end = timezone.now()
+        start = end - timedelta(days=days)
+        queryset = Log.objects.for_user(request.user).filter(
+            status=Log.STATUS_COMPLETED,
+            occurred_at__gte=start,
+            occurred_at__lte=end,
         )
-
-    def _requested_kinds(self, request):
-        requested = request.query_params.get('kind')
-        allowed = {'log', 'reflection', 'exercise'}
-        if not requested:
-            return allowed
-        kinds = {kind.strip() for kind in requested.split(',') if kind.strip()}
-        invalid = kinds - allowed
-        if invalid:
-            raise ValidationError({'kind': 'Use log, reflection, or exercise.'})
-        return kinds
-
-    def _base_queryset(self, model, request):
-        queryset = model.objects.for_user(request.user).select_related('event')
-        event_id = request.query_params.get('event')
-        created_after = request.query_params.get('created_after')
-        created_before = request.query_params.get('created_before')
-        title = request.query_params.get('title')
-        if event_id:
-            queryset = queryset.filter(event_id=event_id)
-        if created_after:
-            queryset = queryset.filter(
-                created_timestamp__gte=parse_datetime(created_after)
+        format_value = request.query_params.get('format')
+        if format_value:
+            queryset = queryset.filter(format=format_value)
+        by_format = {}
+        for row in queryset.values('format').annotate(count=Count('id')):
+            key = normalize_log_format_breakdown_key(row['format'])
+            by_format[key] = by_format.get(key, 0) + row['count']
+        episode_queryset = queryset.filter(format=Log.FORMAT_EPISODE)
+        duration = episode_queryset.filter(
+            episode_detail__ended_at__isnull=False,
+        ).aggregate(
+            total=Sum(
+                ExpressionWrapper(
+                    F('episode_detail__ended_at') - F('occurred_at'),
+                    output_field=DurationField(),
+                )
             )
-        if created_before:
-            queryset = queryset.filter(
-                created_timestamp__lte=parse_datetime(created_before)
+        )['total']
+        characteristic_counts = [
+            {
+                'id': row['episode_detail__characteristics__id'],
+                'code': row['episode_detail__characteristics__code'],
+                'name': row['episode_detail__characteristics__name'],
+                'count': row['count'],
+            }
+            for row in episode_queryset.values(
+                'episode_detail__characteristics__id',
+                'episode_detail__characteristics__code',
+                'episode_detail__characteristics__name',
             )
-        if title:
-            queryset = queryset.filter(title__icontains=title)
-        return queryset
-
-    def _filtered_log_queryset(self, request):
-        queryset = self._base_queryset(Log, request).select_related('mood')
-        mood = request.query_params.get('mood')
-        tags = request.query_params.get('tags')
-        if mood:
-            queryset = queryset.filter(mood_id=mood)
-        if tags:
-            queryset = queryset.filter(tags__id=tags)
-        return queryset.prefetch_related('tags')
-
-    def _filtered_reflection_queryset(self, request):
-        queryset = self._base_queryset(Reflection, request)
-        subtype = request.query_params.get('subtype')
-        if subtype:
-            queryset = queryset.filter(subtype=subtype)
-        return queryset
-
-    def _filtered_exercise_queryset(self, request):
-        queryset = self._base_queryset(Exercise, request)
-        subtype = request.query_params.get('subtype')
-        if subtype:
-            queryset = queryset.filter(subtype=subtype)
-        return queryset
-
-    def _log_items(self, queryset):
-        return [
-            {
-                'id': log.id,
-                'kind': 'log',
-                'event': log.event_id,
-                'label': log.title,
-                'created_timestamp': log.created_timestamp,
-                'updated_timestamp': log.updated_timestamp,
-                'summary': {
-                    'mood': log.mood_id,
-                    'subtype': log.subtype,
-                    'tag_count': log.tags.count(),
-                },
-            }
-            for log in queryset
+            .exclude(episode_detail__characteristics__isnull=True)
+            .annotate(count=Count('id'))
+            .order_by('-count', 'episode_detail__characteristics__name')
         ]
-
-    def _reflection_items(self, queryset):
-        return [
+        social_effects = [
             {
-                'id': reflection.id,
-                'kind': 'reflection',
-                'event': reflection.event_id,
-                'label': reflection.title,
-                'created_timestamp': reflection.created_timestamp,
-                'updated_timestamp': reflection.updated_timestamp,
-                'summary': {
-                    'subtype': reflection.subtype,
-                    'clarity_check': reflection.clarity_check,
-                },
+                'battery_effect': row[
+                    'social_energy_detail__battery_effect'
+                ],
+                'mood_shift': row['social_energy_detail__mood_shift'],
+                'behavioral_effect': row[
+                    'social_energy_detail__behavioral_effect'
+                ],
+                'count': row['count'],
             }
-            for reflection in queryset
+            for row in queryset.filter(format=Log.FORMAT_SOCIAL_ENERGY)
+            .values(
+                'social_energy_detail__battery_effect',
+                'social_energy_detail__mood_shift',
+                'social_energy_detail__behavioral_effect',
+            )
+            .annotate(count=Count('id'))
+            .order_by('-count')
         ]
-
-    def _exercise_items(self, queryset):
-        return [
+        sentiment_shifts = [
             {
-                'id': exercise.id,
-                'kind': 'exercise',
-                'event': exercise.event_id,
-                'label': exercise.title,
-                'created_timestamp': exercise.created_timestamp,
-                'updated_timestamp': exercise.updated_timestamp,
-                'summary': {
-                    'subtype': exercise.subtype,
-                    'measurement_delta': exercise.measurement_delta,
-                },
+                'before_state': row['sentiment_detail__before_state__code'],
+                'after_state': row['sentiment_detail__after_state__code'],
+                'overall_exchange': row[
+                    'sentiment_detail__overall_exchange'
+                ],
+                'count': row['count'],
             }
-            for exercise in queryset
+            for row in queryset.filter(format=Log.FORMAT_SENTIMENT)
+            .values(
+                'sentiment_detail__before_state__code',
+                'sentiment_detail__after_state__code',
+                'sentiment_detail__overall_exchange',
+            )
+            .annotate(count=Count('id'))
+            .order_by('-count')
         ]
+        return Response({
+            'window': {
+                'days': days,
+                'from': start,
+                'to': end,
+            },
+            'total': queryset.count(),
+            'by_format': by_format,
+            'episode': {
+                'count': by_format.get(Log.FORMAT_EPISODE, 0),
+                'total_duration_minutes': (
+                    round(duration.total_seconds() / 60)
+                    if duration
+                    else 0
+                ),
+                'characteristics': characteristic_counts,
+            },
+            'social_energy': {
+                'count': by_format.get(Log.FORMAT_SOCIAL_ENERGY, 0),
+                'effects': social_effects,
+            },
+            'sentiment': {
+                'count': by_format.get(Log.FORMAT_SENTIMENT, 0),
+                'shifts': sentiment_shifts,
+            },
+        })

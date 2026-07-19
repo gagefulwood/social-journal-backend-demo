@@ -9,6 +9,8 @@ from lookups.serializers import (
     MoodSerializer,
 )
 
+EVENT_JOURNAL_PREVIEW_LIMIT = 4
+
 class EventParticipantSerializer(serializers.ModelSerializer):
     contact = ContactListSerializer(read_only=True)
 
@@ -132,25 +134,50 @@ class EventSerializer(serializers.ModelSerializer):
         return data
 
     def get_journals(self, obj):
+        logs = getattr(obj, 'journal_log_preview', None)
+        if logs is None:
+            logs = obj.logs.select_related('primary_contact').order_by(
+                '-updated_timestamp',
+                '-created_timestamp',
+                '-id',
+            )[:EVENT_JOURNAL_PREVIEW_LIMIT]
+        reflections = getattr(obj, 'journal_reflection_preview', None)
+        if reflections is None:
+            reflections = (
+                obj.reflections.select_related('primary_contact')
+                .order_by(
+                    '-updated_timestamp',
+                    '-created_timestamp',
+                    '-id',
+                )[:EVENT_JOURNAL_PREVIEW_LIMIT]
+            )
+        log_count = getattr(obj, 'journal_log_count', None)
+        if log_count is None:
+            log_count = obj.logs.count()
+        reflection_count = getattr(obj, 'journal_reflection_count', None)
+        if reflection_count is None:
+            reflection_count = obj.reflections.count()
         return {
-            'logs': [self._log_summary(log) for log in obj.logs.all()],
+            'logs': [self._log_summary(log) for log in logs],
             'reflections': [
                 self._reflection_summary(reflection)
-                for reflection in obj.reflections.all()
+                for reflection in reflections
             ],
-            'exercises': [
-                self._exercise_summary(exercise)
-                for exercise in obj.exercises.all()
-            ],
+            'log_count': log_count,
+            'reflection_count': reflection_count,
         }
 
     def _log_summary(self, log):
         return {
             'id': log.id,
-            'kind': 'log',
+            'family': 'log',
+            'format': log.format,
+            'status': log.status,
             'title': log.title,
-            'mood': MoodSerializer(log.mood, context=self.context).data
-            if log.mood_id else None,
+            'primary_contact': self._journal_contact_summary(
+                log.primary_contact
+            ),
+            'occurred_at': log.occurred_at,
             'created_timestamp': log.created_timestamp,
             'updated_timestamp': log.updated_timestamp,
         }
@@ -158,23 +185,24 @@ class EventSerializer(serializers.ModelSerializer):
     def _reflection_summary(self, reflection):
         return {
             'id': reflection.id,
-            'kind': 'reflection',
+            'family': 'reflection',
+            'format': reflection.format,
+            'status': reflection.status,
             'title': reflection.title,
-            'subtype': reflection.subtype,
-            'clarity_check': reflection.clarity_check,
+            'primary_contact': self._journal_contact_summary(
+                reflection.primary_contact
+            ),
+            'occurred_at': reflection.occurred_at,
             'created_timestamp': reflection.created_timestamp,
             'updated_timestamp': reflection.updated_timestamp,
         }
 
-    def _exercise_summary(self, exercise):
+    def _journal_contact_summary(self, contact):
+        if contact is None:
+            return None
         return {
-            'id': exercise.id,
-            'kind': 'exercise',
-            'title': exercise.title,
-            'subtype': exercise.subtype,
-            'measurement_delta': exercise.measurement_delta,
-            'created_timestamp': exercise.created_timestamp,
-            'updated_timestamp': exercise.updated_timestamp,
+            'id': contact.id,
+            'display_name': str(contact),
         }
 
     def _validate_participant_contacts(self, contacts, user):

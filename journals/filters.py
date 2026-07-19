@@ -1,6 +1,6 @@
 import django_filters
 
-from .models import Exercise, Log, Reflection
+from .models import Log, Reflection
 
 
 class JournalTimestampFilterSet(django_filters.FilterSet):
@@ -28,12 +28,4 @@ class ReflectionFilter(JournalTimestampFilterSet):
 
     class Meta:
         model = Reflection
-        fields = ['event', 'title', 'subtype', 'created_after', 'created_before']
-
-
-class ExerciseFilter(JournalTimestampFilterSet):
-    title = django_filters.CharFilter(field_name='title', lookup_expr='icontains')
-
-    class Meta:
-        model = Exercise
         fields = ['event', 'title', 'subtype', 'created_after', 'created_before']

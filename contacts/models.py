@@ -329,6 +329,14 @@ class Fact(PinnableContextModel):
     label = models.CharField(max_length=120, null=True, blank=True)
     detail_value = models.TextField()
     is_conversation_cue = models.BooleanField(default=False)
+    source_reflection = models.ForeignKey(
+        'journals.Reflection',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='published_facts',
+    )
+    source_item_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         db_table = 'facts'
@@ -337,6 +345,13 @@ class Fact(PinnableContextModel):
             models.Index(
                 fields=['contact', '-pinned_at'],
                 name='fact_contact_pinned_idx',
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source_reflection', 'source_item_id'],
+                condition=Q(source_reflection__isnull=False),
+                name='unique_fact_reflection_source',
             ),
         ]
 
@@ -384,6 +399,14 @@ class Observation(PinnableContextModel):
         related_name='observations',
     )
     archived_at = models.DateTimeField(null=True, blank=True)
+    source_reflection = models.ForeignKey(
+        'journals.Reflection',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='published_observations',
+    )
+    source_item_id = models.UUIDField(null=True, blank=True)
 
     objects = ObservationManager()
 
@@ -394,6 +417,13 @@ class Observation(PinnableContextModel):
             models.Index(
                 fields=['contact', '-pinned_at'],
                 name='obs_contact_pinned_idx',
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source_reflection', 'source_item_id'],
+                condition=Q(source_reflection__isnull=False),
+                name='unique_observation_reflection_source',
             ),
         ]
     

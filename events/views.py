@@ -6,10 +6,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import (
     BooleanField,
     Case,
+    Count,
     Exists,
     F,
     IntegerField,
     OuterRef,
+    Prefetch,
     Q,
     Value,
     When,
@@ -19,9 +21,15 @@ from django.utils import timezone
 
 from .models import Event, EventParticipant, EVENT_TIER_MILESTONE, EVENT_TIER_ROUTINE
 from .filters import EventFilter
-from .serializers import EventRelatedSerializer, EventSerializer, EventListSerializer
+from .serializers import (
+    EVENT_JOURNAL_PREVIEW_LIMIT,
+    EventListSerializer,
+    EventRelatedSerializer,
+    EventSerializer,
+)
 from core.pagination import StandardResultsPagination
 from core.permissions import IsOwner
+from journals.models import Log, Reflection
 
 RELATED_EVENTS_DEFAULT_LIMIT = 2
 RELATED_EVENTS_MAX_LIMIT = 10
@@ -44,7 +52,7 @@ class EventViewSet(ModelViewSet):
     POST /api/events/ -> Create a new event with optional participant contact IDs
     GET /api/events/ -> List authenticated user's events, newest-first by default
     PATCH /api/events/{id}/ -> Update mutable event fields and replace participants
-    DELETE /api/events/{id}/ -> Delete an event and cascade participants/journals
+    DELETE /api/events/{id}/ -> Delete an event and unlink retained journals
     '''
     serializer_class = EventSerializer
     permission_classes = [IsAuthenticated, IsOwner]
@@ -72,17 +80,53 @@ class EventViewSet(ModelViewSet):
         if getattr(self, 'swagger_fake_view', False):
             return Event.objects.none()
 
-        return (
+        queryset = (
             Event.objects
             .filter(user=self.request.user)
             .select_related("context_category", "interaction_mode", "mood")
-            .prefetch_related(
-                "participants__contact",
-                "logs",
-                "reflections",
-                "exercises",
+            .annotate(
+                journal_log_exists=Exists(
+                    Log.objects.filter(event_id=OuterRef("pk")),
+                ),
+                journal_reflection_exists=Exists(
+                    Reflection.objects.filter(event_id=OuterRef("pk")),
+                ),
             )
         )
+        action = getattr(self, 'action', None)
+        if action in {'list', 'retrieve', 'partial_update', 'related'}:
+            queryset = queryset.prefetch_related("participants__contact")
+        if action in {'retrieve', 'partial_update'}:
+            queryset = queryset.annotate(
+                journal_log_count=Count("logs", distinct=True),
+                journal_reflection_count=Count("reflections", distinct=True),
+            ).prefetch_related(
+                Prefetch(
+                    "logs",
+                    queryset=(
+                        Log.objects.select_related("primary_contact")
+                        .order_by(
+                            "-updated_timestamp",
+                            "-created_timestamp",
+                            "-id",
+                        )[:EVENT_JOURNAL_PREVIEW_LIMIT]
+                    ),
+                    to_attr="journal_log_preview",
+                ),
+                Prefetch(
+                    "reflections",
+                    queryset=(
+                        Reflection.objects.select_related("primary_contact")
+                        .order_by(
+                            "-updated_timestamp",
+                            "-created_timestamp",
+                            "-id",
+                        )[:EVENT_JOURNAL_PREVIEW_LIMIT]
+                    ),
+                    to_attr="journal_reflection_preview",
+                ),
+            )
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

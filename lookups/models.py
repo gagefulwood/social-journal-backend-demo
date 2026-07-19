@@ -274,3 +274,77 @@ class MediaType(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class JournalLookup(models.Model):
+    '''Owner-scoped options shared by the typed Journal formats.'''
+
+    user = models.ForeignKey(
+        Users,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='%(class)ss',
+    )
+    code = models.SlugField(max_length=100, blank=True)
+    name = models.CharField(max_length=100)
+    icon_reference = models.CharField(max_length=100, blank=True)
+    color = models.CharField(max_length=20, blank=True)
+    is_system_default = models.BooleanField(default=False)
+
+    objects = LookupManager()
+
+    class Meta:
+        abstract = True
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(is_system_default=True, user__isnull=True)
+                    | Q(is_system_default=False, user__isnull=False)
+                ),
+                name='%(app_label)s_%(class)s_valid_owner',
+            ),
+            models.UniqueConstraint(
+                fields=['code'],
+                condition=Q(is_system_default=True),
+                name='%(app_label)s_%(class)s_unique_system_code',
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'name'],
+                condition=Q(user__isnull=False),
+                name='%(app_label)s_%(class)s_unique_user_name',
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class EpisodeCategory(JournalLookup):
+    class Meta(JournalLookup.Meta):
+        db_table = 'episode_categories'
+
+
+class EpisodeCharacteristic(JournalLookup):
+    class Meta(JournalLookup.Meta):
+        db_table = 'episode_characteristics'
+
+
+class EpisodeContextTag(JournalLookup):
+    class Meta(JournalLookup.Meta):
+        db_table = 'episode_context_tags'
+
+
+class SocialEnergyFactor(JournalLookup):
+    class Meta(JournalLookup.Meta):
+        db_table = 'social_energy_factors'
+
+
+class EmotionState(JournalLookup):
+    class Meta(JournalLookup.Meta):
+        db_table = 'emotion_states'
+
+
+class InteractionDynamic(JournalLookup):
+    class Meta(JournalLookup.Meta):
+        db_table = 'interaction_dynamics'
