@@ -6,7 +6,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import (
     BooleanField,
     Case,
-    Count,
     Exists,
     F,
     IntegerField,
@@ -19,14 +18,21 @@ from django.db.models import (
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models import Event, EventParticipant, EVENT_TIER_MILESTONE, EVENT_TIER_ROUTINE
+from .models import (
+    EVENT_TIER_MILESTONE,
+    EVENT_TIER_ROUTINE,
+    Event,
+    EventChapter,
+    EventChapterParticipant,
+    EventParticipant,
+)
 from .filters import EventFilter
 from .serializers import (
-    EVENT_JOURNAL_PREVIEW_LIMIT,
     EventListSerializer,
     EventRelatedSerializer,
     EventSerializer,
 )
+from .services import ready_event_media_queryset
 from core.pagination import StandardResultsPagination
 from core.permissions import IsOwner
 from journals.models import Log, Reflection
@@ -83,7 +89,13 @@ class EventViewSet(ModelViewSet):
         queryset = (
             Event.objects
             .filter(user=self.request.user)
-            .select_related("context_category", "interaction_mode", "mood")
+            .order_by("-event_timestamp", "-id")
+            .select_related(
+                "user",
+                "context_category",
+                "interaction_mode",
+                "mood",
+            )
             .annotate(
                 journal_log_exists=Exists(
                     Log.objects.filter(event_id=OuterRef("pk")),
@@ -95,35 +107,61 @@ class EventViewSet(ModelViewSet):
         )
         action = getattr(self, 'action', None)
         if action in {'list', 'retrieve', 'partial_update', 'related'}:
-            queryset = queryset.prefetch_related("participants__contact")
-        if action in {'retrieve', 'partial_update'}:
-            queryset = queryset.annotate(
-                journal_log_count=Count("logs", distinct=True),
-                journal_reflection_count=Count("reflections", distinct=True),
-            ).prefetch_related(
+            queryset = queryset.prefetch_related(
                 Prefetch(
-                    "logs",
+                    "participants",
                     queryset=(
-                        Log.objects.select_related("primary_contact")
-                        .order_by(
-                            "-updated_timestamp",
-                            "-created_timestamp",
-                            "-id",
-                        )[:EVENT_JOURNAL_PREVIEW_LIMIT]
+                        EventParticipant.objects
+                        .filter(
+                            contact__is_active=True,
+                            contact__user=self.request.user,
+                        )
+                        .select_related(
+                            "contact",
+                            "contact__relation",
+                            "contact__occupation",
+                            "contact__profile_picture",
+                            "contact__profile_picture__media_type",
+                        )
+                        .order_by("id")
                     ),
-                    to_attr="journal_log_preview",
+                )
+            )
+        if action in {'retrieve', 'partial_update'}:
+            chapter_participants = (
+                EventChapterParticipant.objects.filter(
+                    contact__is_active=True,
+                    contact__user=self.request.user,
+                )
+                .select_related(
+                    "contact",
+                    "contact__relation",
+                    "contact__occupation",
+                    "contact__profile_picture",
+                    "contact__profile_picture__media_type",
+                )
+                .order_by("display_order", "id")
+            )
+            chapters = (
+                EventChapter.objects.select_related("event", "event__user")
+                .prefetch_related(
+                    Prefetch(
+                        "participant_links",
+                        queryset=chapter_participants,
+                    ),
+                )
+                .order_by("position", "id")
+            )
+            queryset = queryset.prefetch_related(
+                Prefetch(
+                    "chapters",
+                    queryset=chapters,
+                    to_attr="chapter_headers",
                 ),
                 Prefetch(
-                    "reflections",
-                    queryset=(
-                        Reflection.objects.select_related("primary_contact")
-                        .order_by(
-                            "-updated_timestamp",
-                            "-created_timestamp",
-                            "-id",
-                        )[:EVENT_JOURNAL_PREVIEW_LIMIT]
-                    ),
-                    to_attr="journal_reflection_preview",
+                    "media_attachments",
+                    queryset=ready_event_media_queryset(),
+                    to_attr="ready_event_media",
                 ),
             )
         return queryset
@@ -187,7 +225,15 @@ class EventViewSet(ModelViewSet):
             Event.objects
             .filter(user=self.request.user)
             .select_related("user", "context_category", "interaction_mode", "mood")
-            .prefetch_related("participants"),
+            .prefetch_related(
+                Prefetch(
+                    "participants",
+                    queryset=EventParticipant.objects.filter(
+                        contact__is_active=True,
+                        contact__user=self.request.user,
+                    ),
+                )
+            ),
             pk=pk,
         )
         self.check_object_permissions(self.request, event)

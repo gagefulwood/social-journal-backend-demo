@@ -2,7 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from contacts.models import Contact
-from events.models import Event
+from events.models import Event, EventChapter
 from lookups.models import (
     EmotionState,
     EpisodeCategory,
@@ -14,6 +14,7 @@ from lookups.models import (
     SocialEnergyFactor,
 )
 from media.models import MediaAsset
+from media.serializers import MediaAssetListSerializer
 
 from .models import (
     CarryForwardFactDraft,
@@ -74,6 +75,16 @@ def _contact_summary(contact):
     return {
         'id': contact.id,
         'display_name': str(contact),
+    }
+
+
+def _chapter_summary(chapter):
+    if chapter is None:
+        return None
+    return {
+        'id': chapter.id,
+        'title': chapter.title,
+        'position': chapter.position,
     }
 
 
@@ -341,6 +352,14 @@ class CanonicalJournalSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    chapter = serializers.SerializerMethodField()
+    chapter_id = serializers.PrimaryKeyRelatedField(
+        queryset=EventChapter.objects.all(),
+        source='chapter',
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
     primary_contact = serializers.SerializerMethodField()
     primary_contact_id = serializers.PrimaryKeyRelatedField(
         queryset=Contact.objects.all(),
@@ -363,15 +382,38 @@ class CanonicalJournalSerializer(serializers.ModelSerializer):
     def get_event(self, obj):
         return _event_summary(obj.event)
 
+    def get_chapter(self, obj):
+        return _chapter_summary(obj.chapter)
+
     def get_primary_contact(self, obj):
         return _contact_summary(obj.primary_contact)
 
     def get_progress(self, obj):
         return progress_for(obj)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        user = _request_user(self)
+        if user:
+            fields['event_id'].queryset = Event.objects.filter(user=user)
+            fields['chapter_id'].queryset = EventChapter.objects.filter(
+                event__user=user,
+            )
+            fields['primary_contact_id'].queryset = Contact.objects.for_user(user)
+        return fields
+
     def validate(self, attrs):
         user = _request_user(self)
-        event = attrs.get('event')
+        event_was_supplied = 'event_id' in self.initial_data
+        chapter_was_supplied = 'chapter_id' in self.initial_data
+        event = attrs.get(
+            'event',
+            self.instance.event if self.instance else None,
+        )
+        chapter = attrs.get(
+            'chapter',
+            self.instance.chapter if self.instance else None,
+        )
         primary_contact = attrs.get('primary_contact')
         if event and user and event.user_id != user.id:
             raise serializers.ValidationError({
@@ -381,6 +423,39 @@ class CanonicalJournalSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'primary_contact_id': (
                     'Select a contact owned by the requesting user.'
+                )
+            })
+        if chapter and user and chapter.event.user_id != user.id:
+            raise serializers.ValidationError({
+                'chapter_id': 'Select a chapter owned by the requesting user.'
+            })
+        if chapter is not None:
+            if event_was_supplied and attrs.get('event') is None:
+                raise serializers.ValidationError({
+                    'event_id': 'A chapter-linked Journal must retain its Event.'
+                })
+            if (
+                event_was_supplied
+                and event is not None
+                and event.id != chapter.event_id
+            ):
+                raise serializers.ValidationError({
+                    'chapter_id': 'Chapter must belong to the selected Event.'
+                })
+            attrs['event'] = chapter.event
+        elif (
+            not chapter_was_supplied
+            and self.instance
+            and self.instance.chapter_id
+            and event_was_supplied
+            and (
+                attrs.get('event') is None
+                or attrs['event'].id != self.instance.chapter.event_id
+            )
+        ):
+            raise serializers.ValidationError({
+                'event_id': (
+                    'Clear chapter_id before moving this Journal to another Event.'
                 )
             })
         if self.instance:
@@ -483,6 +558,8 @@ class LogSerializer(CanonicalJournalSerializer):
             'title',
             'event',
             'event_id',
+            'chapter',
+            'chapter_id',
             'primary_contact',
             'primary_contact_id',
             'occurred_at',
@@ -580,6 +657,8 @@ class ReflectionSerializer(CanonicalJournalSerializer):
             'title',
             'event',
             'event_id',
+            'chapter',
+            'chapter_id',
             'primary_contact',
             'primary_contact_id',
             'contact_ids',
@@ -1103,12 +1182,16 @@ class ReflectionSerializer(CanonicalJournalSerializer):
     def _attachment_representation(self, reflection, attachment):
         media = attachment.media_asset
         media_type = media.media_type.name if media.media_type else None
+        media_representation = MediaAssetListSerializer(
+            media,
+            context=self.context,
+        ).data
         return {
             'id': attachment.id,
             'media_asset': {
                 'id': media.id,
                 'media_type': media_type,
-                'file_url': media.file.url if media.file else '',
+                'file_url': media_representation['content_url'],
                 'thumbnail_url': None,
                 'original_filename': media.original_filename,
                 'duration_seconds': None,
@@ -1134,7 +1217,12 @@ class HubItemSerializer(serializers.Serializer):
     title = serializers.CharField()
     summary = serializers.CharField(allow_blank=True, max_length=160)
     event = serializers.JSONField(allow_null=True)
+    chapter = serializers.JSONField(allow_null=True)
     primary_contact = serializers.JSONField(allow_null=True)
+    relation_source = serializers.ChoiceField(
+        choices=('direct', 'event', 'both'),
+        allow_null=True,
+    )
     occurred_at = serializers.DateTimeField(allow_null=True)
     current_step = serializers.CharField()
     progress = serializers.JSONField()

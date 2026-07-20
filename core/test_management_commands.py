@@ -1,10 +1,12 @@
 from datetime import date, timedelta
 from io import StringIO
+import tempfile
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db.models import Count
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from contacts.models import (
@@ -180,12 +182,37 @@ class PopulateAccountCommandTests(TestCase):
         self.assertTrue(FactCategory.objects.filter(pk=category.pk).exists())
         self.assertTrue(MediaAsset.objects.filter(pk=asset.pk).exists())
         self.assertEqual(Users.objects.count(), 2)
-        self.assertTrue(
+        self.assertFalse(
             ReflectionAttachment.objects.filter(
                 reflection__user=self.user,
                 media_asset=asset,
             ).exists()
         )
+
+    def test_reset_reuses_demo_media_only_when_storage_bytes_exist(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(
+            MEDIA_ROOT=media_root
+        ):
+            asset = MediaAsset.objects.create(
+                user=self.user,
+                file=SimpleUploadedFile(
+                    "demo-journal-photo.jpg",
+                    b"stored-demo-bytes",
+                    content_type="image/jpeg",
+                ),
+                original_filename="demo-journal-photo.jpg",
+                content_type="image/jpeg",
+                file_size=len(b"stored-demo-bytes"),
+            )
+
+            self.reset()
+
+            self.assertTrue(
+                ReflectionAttachment.objects.filter(
+                    reflection__user=self.user,
+                    media_asset=asset,
+                ).exists()
+            )
 
     def test_populates_exact_counts_and_rich_contact_profiles(self):
         self.reset()

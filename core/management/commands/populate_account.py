@@ -192,7 +192,11 @@ class Command(BaseCommand):
 
     def _media(self,user,made):
         asset=MediaAsset.objects.for_user(user).filter(original_filename__istartswith="demo-",content_type__istartswith="image/").first()
-        if not asset: return
+        if not asset or not asset.file: return
+        try:
+            if not asset.file.storage.exists(asset.file.name): return
+        except (OSError, ValueError):
+            return
         free=Reflection.objects.filter(user=user,format="free").first(); emotional=Reflection.objects.filter(user=user,format="emotional").first()
         if free:
             a=ReflectionAttachment.objects.create(reflection=free,media_asset=asset,is_sensitive=False,display_order=0); free.cover_attachment=a; free.save(update_fields=["cover_attachment"]); made["reflection attachments"]+=1

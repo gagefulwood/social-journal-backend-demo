@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Window
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -51,6 +52,165 @@ SPECIFIC_LOG_FORMATS = (
     Log.FORMAT_SOCIAL_ENERGY,
     Log.FORMAT_SENTIMENT,
 )
+JOURNAL_SUMMARY_LIMIT = 4
+
+
+class JournalSummaryQuery:
+    '''Bounded Event/chapter Journal summaries without full feed hydration.'''
+
+    def __init__(self, *, user, event, chapter=None):
+        if event.user_id != user.id:
+            raise ValueError('Event must belong to the summary owner.')
+        if chapter is not None and (
+            chapter.event_id != event.id or chapter.event.user_id != user.id
+        ):
+            raise ValueError('Chapter must belong to the summarized Event.')
+        self.user = user
+        self.event = event
+        self.chapter = chapter
+
+    def fetch(self):
+        scope = {
+            'event': self.event,
+            (
+                'chapter__isnull'
+                if self.chapter is None
+                else 'chapter'
+            ): True if self.chapter is None else self.chapter,
+        }
+        logs = (
+            Log.objects.for_user(self.user)
+            .filter(**scope)
+            .select_related(
+                'primary_contact',
+                'episode_detail__category',
+                'social_energy_detail',
+                'sentiment_detail__before_state',
+                'sentiment_detail__after_state',
+            )
+            .order_by('-updated_timestamp', '-created_timestamp', '-id')
+        )
+        reflections = (
+            Reflection.objects.for_user(self.user)
+            .filter(**scope)
+            .select_related(
+                'primary_contact',
+                'interaction_detail',
+                'moment_detail',
+                'emotional_detail',
+                'free_detail',
+            )
+            .order_by('-updated_timestamp', '-created_timestamp', '-id')
+        )
+        logs = list(
+            logs.annotate(
+                summary_total=Window(expression=Count('pk')),
+            )[:JOURNAL_SUMMARY_LIMIT]
+        )
+        reflections = list(
+            reflections.annotate(
+                summary_total=Window(expression=Count('pk')),
+            )[:JOURNAL_SUMMARY_LIMIT]
+        )
+        return {
+            'logs': [
+                self._summary(log, family='log')
+                for log in logs
+            ],
+            'reflections': [
+                self._summary(reflection, family='reflection')
+                for reflection in reflections
+            ],
+            'log_count': logs[0].summary_total if logs else 0,
+            'reflection_count': (
+                reflections[0].summary_total if reflections else 0
+            ),
+        }
+
+    def _summary(self, journal, *, family):
+        contact = journal.primary_contact
+        return {
+            'id': journal.id,
+            'family': family,
+            'format': journal.format,
+            'status': journal.status,
+            'title': journal.title,
+            'summary': self._compact_summary(journal),
+            'primary_contact': (
+                {
+                    'id': contact.id,
+                    'display_name': str(contact),
+                }
+                if contact is not None
+                else None
+            ),
+            'occurred_at': journal.occurred_at,
+            'created_timestamp': journal.created_timestamp,
+            'updated_timestamp': journal.updated_timestamp,
+        }
+
+    def _compact_summary(self, journal):
+        values = []
+        if isinstance(journal, Log):
+            if journal.format == Log.FORMAT_LEGACY:
+                values = [journal.body]
+            elif journal.format == Log.FORMAT_EPISODE:
+                detail = getattr(journal, 'episode_detail', None)
+                values = [
+                    getattr(getattr(detail, 'category', None), 'name', ''),
+                    'Ongoing' if getattr(detail, 'is_ongoing', False) else '',
+                ]
+            elif journal.format == Log.FORMAT_SOCIAL_ENERGY:
+                detail = getattr(journal, 'social_energy_detail', None)
+                values = [
+                    getattr(detail, 'battery_effect', ''),
+                    getattr(detail, 'mood_shift', ''),
+                    getattr(detail, 'behavioral_effect', ''),
+                ]
+            elif journal.format == Log.FORMAT_SENTIMENT:
+                detail = getattr(journal, 'sentiment_detail', None)
+                values = [
+                    getattr(getattr(detail, 'before_state', None), 'name', ''),
+                    getattr(getattr(detail, 'after_state', None), 'name', ''),
+                    getattr(detail, 'overall_exchange', ''),
+                ]
+        elif journal.format == Reflection.FORMAT_LEGACY:
+            response = (
+                journal.data.get('response', '')
+                if isinstance(journal.data, dict)
+                else ''
+            )
+            values = [response, journal.clarity_check]
+        elif journal.format == Reflection.FORMAT_INTERACTION:
+            detail = getattr(journal, 'interaction_detail', None)
+            values = [
+                getattr(detail, 'topic_or_activity', ''),
+                getattr(detail, 'additional_writing', ''),
+            ]
+        elif journal.format == Reflection.FORMAT_MOMENT:
+            detail = getattr(journal, 'moment_detail', None)
+            values = [
+                getattr(detail, 'focus_moment', ''),
+                getattr(detail, 'what_happened', ''),
+            ]
+        elif journal.format == Reflection.FORMAT_EMOTIONAL:
+            detail = getattr(journal, 'emotional_detail', None)
+            values = [
+                getattr(detail, 'situation', ''),
+                getattr(detail, 'understanding_now', ''),
+            ]
+        elif journal.format == Reflection.FORMAT_FREE:
+            detail = getattr(journal, 'free_detail', None)
+            values = [getattr(detail, 'body', '')]
+
+        normalized = ' · '.join(
+            ' '.join(str(value).split())
+            for value in values
+            if value and str(value).strip()
+        )
+        if len(normalized) <= 160:
+            return normalized
+        return f'{normalized[:159].rstrip()}…'
 
 
 def normalize_log_format_breakdown_key(value):

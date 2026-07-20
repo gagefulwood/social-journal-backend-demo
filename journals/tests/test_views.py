@@ -6,11 +6,12 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from contacts.models import Contact, Fact
-from events.models import Event
+from events.models import Event, EventParticipant
 from journals.models import (
     Exercise,
     Log,
     Reflection,
+    ReflectionContact,
     SocialEnergyLogDetail,
 )
 from lookups.models import EmotionState, EpisodeCategory, FactCategory
@@ -707,6 +708,327 @@ class TypedJournalApiTests(TestCase):
             status.HTTP_400_BAD_REQUEST,
         )
         self.assertIn('format', legacy_edit.data)
+
+    def test_related_contact_feed_labels_direct_event_and_both_once(self):
+        companion = Contact.objects.create(
+            user=self.user,
+            first_name='Jordan',
+            last_name='Lee',
+        )
+        event_only = EventFactory(user=self.user)
+        both_event = EventFactory(user=self.user)
+        for event in (event_only, both_event):
+            EventParticipant.objects.create(
+                event=event,
+                contact=self.contact,
+            )
+            EventParticipant.objects.create(event=event, contact=companion)
+
+        direct_log = Log.objects.create(
+            user=self.user,
+            primary_contact=self.contact,
+            title='Direct log',
+        )
+        event_log = Log.objects.create(
+            user=self.user,
+            event=event_only,
+            title='Event log',
+        )
+        both_log = Log.objects.create(
+            user=self.user,
+            event=both_event,
+            primary_contact=self.contact,
+            title='Both log',
+        )
+        direct_reflection = Reflection.objects.create(
+            user=self.user,
+            title='Direct reflection',
+        )
+        ReflectionContact.objects.create(
+            reflection=direct_reflection,
+            contact=self.contact,
+        )
+        event_reflection = Reflection.objects.create(
+            user=self.user,
+            event=event_only,
+            title='Event reflection',
+        )
+        both_reflection = Reflection.objects.create(
+            user=self.user,
+            event=both_event,
+            primary_contact=self.contact,
+            title='Both reflection',
+        )
+        ReflectionContact.objects.create(
+            reflection=both_reflection,
+            contact=self.contact,
+        )
+        Log.objects.create(user=self.user, title='Unrelated log')
+        Reflection.objects.create(
+            user=self.user,
+            title='Unrelated reflection',
+        )
+
+        with self.assertNumQueries(2):
+            response = self.client.get(
+                reverse('journal-feed'),
+                {
+                    'related_contact': self.contact.id,
+                    'page_size': 100,
+                },
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 6)
+        sources = {
+            item['id']: item['relation_source']
+            for item in response.data['results']
+        }
+        self.assertEqual(
+            sources,
+            {
+                str(direct_log.id): 'direct',
+                str(event_log.id): 'event',
+                str(both_log.id): 'both',
+                str(direct_reflection.id): 'direct',
+                str(event_reflection.id): 'event',
+                str(both_reflection.id): 'both',
+            },
+        )
+        self.assertEqual(len(sources), len(response.data['results']))
+
+        existing_contact_filter = self.client.get(
+            reverse('journal-feed'),
+            {'contact': self.contact.id, 'page_size': 100},
+        )
+        self.assertEqual(
+            existing_contact_filter.status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            {
+                item['id']
+                for item in existing_contact_filter.data['results']
+            },
+            {
+                str(direct_log.id),
+                str(both_log.id),
+                str(direct_reflection.id),
+                str(both_reflection.id),
+            },
+        )
+        self.assertTrue(
+            all(
+                item['relation_source'] is None
+                for item in existing_contact_filter.data['results']
+            )
+        )
+        ambiguous_filter = self.client.get(
+            reverse('journal-feed'),
+            {
+                'contact': self.contact.id,
+                'related_contact': self.contact.id,
+            },
+        )
+        self.assertEqual(
+            ambiguous_filter.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertIn('related_contact', ambiguous_filter.data)
+
+        invalid_filter = self.client.get(
+            reverse('journal-feed'),
+            {'related_contact': 'not-a-contact-id'},
+        )
+        self.assertEqual(
+            invalid_filter.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertIn('related_contact', invalid_filter.data)
+
+        self.client.force_authenticate(user=None)
+        unauthenticated = self.client.get(
+            reverse('journal-feed'),
+            {'related_contact': self.contact.id},
+        )
+        self.assertEqual(
+            unauthenticated.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_related_contact_feed_is_owner_scoped(self):
+        own_log = Log.objects.create(
+            user=self.user,
+            primary_contact=self.contact,
+            title='Owned log',
+        )
+        Log.objects.create(
+            user=self.other_user,
+            primary_contact=self.contact,
+            title='Other owner journal',
+        )
+        invalid_direct = Log.objects.create(
+            user=self.user,
+            primary_contact=self.other_contact,
+            title='Cross-owner direct link',
+        )
+        invalid_event = EventFactory(user=self.user)
+        EventParticipant.objects.create(
+            event=invalid_event,
+            contact=self.other_contact,
+        )
+        invalid_event_reflection = Reflection.objects.create(
+            user=self.user,
+            event=invalid_event,
+            title='Cross-owner event link',
+        )
+
+        response = self.client.get(
+            reverse('journal-feed'),
+            {'related_contact': self.contact.id},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['id'], str(own_log.id))
+
+        cross_owner = self.client.get(
+            reverse('journal-feed'),
+            {'related_contact': self.other_contact.id},
+        )
+        self.assertEqual(cross_owner.status_code, status.HTTP_200_OK)
+        self.assertEqual(cross_owner.data['count'], 0)
+        self.assertNotIn(
+            str(invalid_direct.id),
+            {item['id'] for item in cross_owner.data['results']},
+        )
+        self.assertNotIn(
+            str(invalid_event_reflection.id),
+            {item['id'] for item in cross_owner.data['results']},
+        )
+
+    def test_related_contact_feed_batches_supported_cover_media(self):
+        media = MediaAsset.objects.create(
+            user=self.user,
+            file='media/contact-journal-cover.jpg',
+            original_filename='contact-journal-cover.jpg',
+            content_type='image/jpeg',
+            file_size=12,
+            alt_text='A shared afternoon',
+        )
+        created = self.client.post(
+            reverse('journal-reflection-list'),
+            {
+                'format': 'free',
+                'title': 'A reflection with a cover',
+                'primary_contact_id': self.contact.id,
+                'detail': {'body': 'A meaningful reflection body.'},
+                'attachments': [
+                    {
+                        'media_asset_id': media.id,
+                        'is_sensitive': False,
+                    }
+                ],
+                'cover_media_asset_id': media.id,
+            },
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+
+        with self.assertNumQueries(3):
+            response = self.client.get(
+                reverse('journal-feed'),
+                {'related_contact': self.contact.id},
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        item = response.data['results'][0]
+        self.assertEqual(item['id'], created.data['id'])
+        self.assertEqual(item['relation_source'], 'direct')
+        self.assertEqual(item['media_count'], 1)
+        self.assertEqual(item['cover']['media_asset_id'], media.id)
+        self.assertEqual(item['cover']['alt_text'], 'A shared afternoon')
+
+    def test_related_contact_feed_handles_deleted_event_without_stale_context(self):
+        event = EventFactory(user=self.user)
+        EventParticipant.objects.create(event=event, contact=self.contact)
+        event_only = Log.objects.create(
+            user=self.user,
+            event=event,
+            title='Event-only journal',
+        )
+        direct_and_event = Reflection.objects.create(
+            user=self.user,
+            event=event,
+            primary_contact=self.contact,
+            title='Direct and Event journal',
+        )
+
+        event.delete()
+
+        response = self.client.get(
+            reverse('journal-feed'),
+            {'related_contact': self.contact.id},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        item = response.data['results'][0]
+        self.assertEqual(item['id'], str(direct_and_event.id))
+        self.assertEqual(item['relation_source'], 'direct')
+        self.assertIsNone(item['event'])
+        self.assertNotEqual(item['id'], str(event_only.id))
+
+    def test_related_contact_feed_pagination_has_stable_tie_breaker(self):
+        logs = [
+            Log.objects.create(
+                user=self.user,
+                primary_contact=self.contact,
+                title=f'Tied log {index}',
+            )
+            for index in range(5)
+        ]
+        tied_timestamp = timezone.now()
+        Log.objects.filter(pk__in=[log.pk for log in logs]).update(
+            created_timestamp=tied_timestamp,
+            updated_timestamp=tied_timestamp,
+        )
+        expected_ids = [
+            str(log_id)
+            for log_id in sorted((log.id for log in logs), reverse=True)
+        ]
+
+        pages = []
+        for page_number in (1, 2, 3):
+            with self.assertNumQueries(2):
+                response = self.client.get(
+                    reverse('journal-feed'),
+                    {
+                        'related_contact': self.contact.id,
+                        'page_size': 2,
+                        'page': page_number,
+                    },
+                )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data['count'], 5)
+            pages.extend(
+                item['id'] for item in response.data['results']
+            )
+
+        self.assertEqual(pages, expected_ids)
+        self.assertEqual(len(pages), len(set(pages)))
+        repeated_first_page = self.client.get(
+            reverse('journal-feed'),
+            {
+                'related_contact': self.contact.id,
+                'page_size': 2,
+                'page': 1,
+            },
+        )
+        self.assertEqual(
+            [item['id'] for item in repeated_first_page.data['results']],
+            expected_ids[:2],
+        )
 
     def test_feed_summary_is_bounded_plain_text_and_privacy_safe(self):
         media = MediaAsset.objects.create(

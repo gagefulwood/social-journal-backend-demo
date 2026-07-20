@@ -1,14 +1,18 @@
 from datetime import timedelta
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import (
+    BooleanField,
     Case,
     CharField,
     Count,
     DurationField,
+    Exists,
     ExpressionWrapper,
     F,
     IntegerField,
+    OuterRef,
     Q,
     Sum,
     TextField,
@@ -24,8 +28,10 @@ from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from contacts.models import Contact
 from core.pagination import StandardResultsPagination
 from core.permissions import IsOwner
+from events.models import Event, EventChapter, EventParticipant
 from lookups.models import (
     EmotionState,
     EpisodeCategory,
@@ -34,8 +40,9 @@ from lookups.models import (
     InteractionDynamic,
     SocialEnergyFactor,
 )
+from media.serializers import MediaAssetListSerializer
 
-from .models import Log, Reflection, ReflectionAttachment
+from .models import Log, Reflection, ReflectionAttachment, ReflectionContact
 from .serializers import (
     EmotionStateSerializer,
     EpisodeCategorySerializer,
@@ -88,12 +95,13 @@ class CanonicalJournalViewSet(viewsets.ModelViewSet):
             return self.queryset_model.objects.none()
         queryset = (
             self.queryset_model.objects.for_user(self.request.user)
-            .select_related('event', 'primary_contact')
+            .select_related('event', 'chapter', 'primary_contact')
         )
         queryset = self._with_related(queryset)
         status_value = self.request.query_params.get('status')
         format_value = self.request.query_params.get('format')
         event_id = self.request.query_params.get('event')
+        chapter_value = self.request.query_params.get('chapter')
         contact_id = self.request.query_params.get('contact')
         search = self.request.query_params.get('search')
         if status_value:
@@ -102,6 +110,33 @@ class CanonicalJournalViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(format=format_value)
         if event_id:
             queryset = queryset.filter(event_id=event_id)
+        if chapter_value:
+            if not event_id:
+                raise ValidationError({
+                    'chapter': 'Use the chapter filter together with event.'
+                })
+            if chapter_value == 'event':
+                queryset = queryset.filter(chapter__isnull=True)
+            else:
+                try:
+                    chapter = EventChapter.objects.get(
+                        pk=chapter_value,
+                        event_id=event_id,
+                        event__user=self.request.user,
+                    )
+                except (
+                    EventChapter.DoesNotExist,
+                    DjangoValidationError,
+                    ValueError,
+                    TypeError,
+                ):
+                    raise ValidationError({
+                        'chapter': (
+                            'Select a chapter in this Event owned by the '
+                            'requesting user.'
+                        )
+                    }) from None
+                queryset = queryset.filter(chapter=chapter)
         if contact_id:
             queryset = self._filter_contact(queryset, contact_id)
         if search:
@@ -285,9 +320,13 @@ class JournalFeedView(generics.GenericAPIView):
         'event_start_timestamp',
         'event_end_timestamp',
         'event_location',
+        'chapter_id',
+        'chapter_title',
+        'chapter_position',
         'primary_contact_id',
         'primary_first_name',
         'primary_last_name',
+        'relation_source',
         'occurred_at',
         'current_step',
         'revision',
@@ -335,7 +374,12 @@ class JournalFeedView(generics.GenericAPIView):
                     'occurred_at, or -occurred_at.'
                 )
             })
-        return queryset.order_by(ordering, '-created_timestamp')
+        return queryset.order_by(
+            ordering,
+            '-created_timestamp',
+            '-id',
+            'family',
+        )
 
     def _families(self, request):
         raw = request.query_params.get('family')
@@ -353,7 +397,18 @@ class JournalFeedView(generics.GenericAPIView):
         format_value = request.query_params.get('format')
         search = request.query_params.get('search')
         event_id = request.query_params.get('event')
+        chapter_value = request.query_params.get('chapter')
         contact_id = request.query_params.get('contact')
+        related_contact_id = self._positive_integer_param(
+            request,
+            'related_contact',
+        )
+        if contact_id and related_contact_id is not None:
+            raise ValidationError({
+                'related_contact': (
+                    'Use contact or related_contact, not both.'
+                )
+            })
         occurred_after = self._datetime_param(request, 'occurred_after')
         occurred_before = self._datetime_param(request, 'occurred_before')
         if status_value:
@@ -372,11 +427,73 @@ class JournalFeedView(generics.GenericAPIView):
         if event_id:
             logs = logs.filter(event_id=event_id)
             reflections = reflections.filter(event_id=event_id)
+        if chapter_value:
+            if not event_id:
+                raise ValidationError({
+                    'chapter': 'Use the chapter filter together with event.'
+                })
+            if not Event.objects.filter(
+                pk=event_id,
+                user=request.user,
+            ).exists():
+                raise ValidationError({
+                    'event': 'Select an Event owned by the requesting user.'
+                })
+            if chapter_value == 'event':
+                logs = logs.filter(chapter__isnull=True)
+                reflections = reflections.filter(chapter__isnull=True)
+            else:
+                try:
+                    chapter = EventChapter.objects.get(
+                        pk=chapter_value,
+                        event_id=event_id,
+                        event__user=request.user,
+                    )
+                except (
+                    EventChapter.DoesNotExist,
+                    DjangoValidationError,
+                    ValueError,
+                    TypeError,
+                ):
+                    raise ValidationError({
+                        'chapter': (
+                            'Select a chapter in this Event owned by the '
+                            'requesting user.'
+                        )
+                    }) from None
+                logs = logs.filter(chapter=chapter)
+                reflections = reflections.filter(chapter=chapter)
         if contact_id:
             logs = logs.filter(primary_contact_id=contact_id)
             reflections = reflections.filter(
                 Q(primary_contact_id=contact_id) | Q(contacts__id=contact_id)
             ).distinct()
+        if related_contact_id is not None:
+            logs = self._with_related_contact_matches(
+                logs,
+                request.user,
+                related_contact_id,
+                reflection=False,
+            )
+            reflections = self._with_related_contact_matches(
+                reflections,
+                request.user,
+                related_contact_id,
+                reflection=True,
+            )
+        else:
+            logs = logs.annotate(
+                relation_source=Value(
+                    None,
+                    output_field=CharField(max_length=6),
+                ),
+            )
+            reflections = reflections.annotate(
+                relation_source=Value(
+                    None,
+                    output_field=CharField(max_length=6),
+                ),
+            )
         if occurred_after:
             logs = logs.filter(occurred_at__gte=occurred_after)
             reflections = reflections.filter(occurred_at__gte=occurred_after)
@@ -384,6 +501,69 @@ class JournalFeedView(generics.GenericAPIView):
             logs = logs.filter(occurred_at__lte=occurred_before)
             reflections = reflections.filter(occurred_at__lte=occurred_before)
         return logs, reflections
+
+    def _with_related_contact_matches(
+        self,
+        queryset,
+        user,
+        contact_id,
+        *,
+        reflection,
+    ):
+        direct_matches = [
+            When(primary_contact_id=contact_id, then=Value(True)),
+        ]
+        if reflection:
+            direct_matches.append(
+                When(
+                    Exists(
+                        ReflectionContact.objects.filter(
+                            reflection_id=OuterRef('pk'),
+                            contact_id=contact_id,
+                        )
+                    ),
+                    then=Value(True),
+                ),
+            )
+        return queryset.alias(
+            _related_contact_visible=Exists(
+                Contact.objects.for_user(user).filter(pk=contact_id)
+            ),
+            _direct_contact_match=Case(
+                *direct_matches,
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+            _event_contact_match=Exists(
+                EventParticipant.objects.filter(
+                    event_id=OuterRef('event_id'),
+                    event__user=user,
+                    contact_id=contact_id,
+                )
+            ),
+        ).filter(
+            _related_contact_visible=True,
+        ).filter(
+            Q(_direct_contact_match=True) | Q(_event_contact_match=True)
+        ).annotate(
+            relation_source=Case(
+                When(
+                    _direct_contact_match=True,
+                    _event_contact_match=True,
+                    then=Value('both'),
+                ),
+                When(
+                    _direct_contact_match=True,
+                    then=Value('direct'),
+                ),
+                When(
+                    _event_contact_match=True,
+                    then=Value('event'),
+                ),
+                default=Value(None),
+                output_field=CharField(max_length=6),
+            ),
+        )
 
     def _log_search_query(self, value):
         social_fields = (
@@ -465,6 +645,18 @@ class JournalFeedView(generics.GenericAPIView):
             raise ValidationError({name: 'Enter a valid ISO 8601 timestamp.'})
         return parsed
 
+    def _positive_integer_param(self, request, name):
+        value = request.query_params.get(name)
+        if not value:
+            return None
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise ValidationError({name: 'Enter a valid positive integer.'})
+        if parsed <= 0:
+            raise ValidationError({name: 'Enter a valid positive integer.'})
+        return parsed
+
     def _common_annotations(self, family):
         return {
             'family': Value(family, output_field=CharField()),
@@ -472,6 +664,8 @@ class JournalFeedView(generics.GenericAPIView):
             'event_start_timestamp': F('event__event_timestamp'),
             'event_end_timestamp': F('event__end_timestamp'),
             'event_location': F('event__location_label'),
+            'chapter_title': F('chapter__title'),
+            'chapter_position': F('chapter__position'),
             'primary_first_name': F('primary_contact__first_name'),
             'primary_last_name': F('primary_contact__last_name'),
         }
@@ -589,6 +783,13 @@ class JournalFeedView(generics.GenericAPIView):
                 'id': row['primary_contact_id'],
                 'display_name': display_name,
             }
+        chapter = None
+        if row['chapter_id']:
+            chapter = {
+                'id': row['chapter_id'],
+                'title': row['chapter_title'],
+                'position': row['chapter_position'],
+            }
         steps = JOURNAL_STEPS.get(row['format'], ['writing'])
         total_steps = len(steps)
         if row['status'] == 'completed':
@@ -608,7 +809,9 @@ class JournalFeedView(generics.GenericAPIView):
             'title': row['title'],
             'summary': self._summary_for(row),
             'event': event,
+            'chapter': chapter,
             'primary_contact': primary_contact,
+            'relation_source': row['relation_source'],
             'occurred_at': row['occurred_at'],
             'current_step': row['current_step'],
             'progress': {
@@ -677,11 +880,15 @@ class JournalFeedView(generics.GenericAPIView):
         ):
             return None
         media = attachment.media_asset
+        media_representation = MediaAssetListSerializer(
+            media,
+            context=self.get_serializer_context(),
+        ).data
         return {
             'attachment_id': attachment.id,
             'media_asset_id': media.id,
             'media_type': media.media_type.name if media.media_type else None,
-            'file_url': media.file.url if media.file else '',
+            'file_url': media_representation['content_url'],
             'alt_text': media.alt_text,
         }
 

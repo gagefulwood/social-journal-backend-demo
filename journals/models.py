@@ -52,6 +52,13 @@ class CanonicalJournalBase(JournalBase):
         choices=STATUS_CHOICES,
         default=STATUS_DRAFT,
     )
+    chapter = models.ForeignKey(
+        'events.EventChapter',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='%(class)ss',
+    )
     primary_contact = models.ForeignKey(
         'contacts.Contact',
         on_delete=models.SET_NULL,
@@ -118,6 +125,10 @@ class Log(CanonicalJournalBase):
             models.Index(
                 fields=['user', 'format', '-occurred_at'],
                 name='log_owner_format_occurred_idx',
+            ),
+            models.Index(
+                fields=['user', 'chapter', 'status', '-occurred_at'],
+                name='log_owner_chap_status_occ_idx',
             ),
         ]
 
@@ -405,6 +416,10 @@ class Reflection(CanonicalJournalBase):
             models.Index(
                 fields=['user', 'format', '-occurred_at'],
                 name='refl_owner_format_occurr_idx',
+            ),
+            models.Index(
+                fields=['user', 'chapter', 'status', '-occurred_at'],
+                name='refl_owner_chap_stat_occ_idx',
             ),
         ]
 

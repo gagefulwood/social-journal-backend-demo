@@ -1,11 +1,17 @@
 import django_filters
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from rest_framework.exceptions import ValidationError as APIValidationError
 
 from journals.models import Log, Reflection
 
-from .models import Event
+from .models import Event, EventParticipant
+
+PARTICIPANT_ID_FILTER_ERROR = (
+    'Participant IDs must be comma-separated valid positive integers.'
+)
 
 
 class EventFilter(django_filters.FilterSet):
@@ -44,15 +50,19 @@ class EventFilter(django_filters.FilterSet):
     def filter_search(self, queryset, name, value):
         if not value:
             return queryset
+        participant_scope = Q(
+            participants__contact__user=self.request.user,
+            participants__contact__is_active=True,
+        )
         return queryset.filter(
             Q(title__icontains=value)
             | Q(description__icontains=value)
             | Q(location_label__icontains=value)
             | Q(context_category__name__icontains=value)
             | Q(interaction_mode__name__icontains=value)
-            | Q(participants__contact__first_name__icontains=value)
-            | Q(participants__contact__last_name__icontains=value)
-            | Q(participants__contact__email__icontains=value)
+            | (participant_scope & Q(participants__contact__first_name__icontains=value))
+            | (participant_scope & Q(participants__contact__last_name__icontains=value))
+            | (participant_scope & Q(participants__contact__email__icontains=value))
         ).distinct()
 
     def filter_event_after(self, queryset, name, value):
@@ -68,14 +78,30 @@ class EventFilter(django_filters.FilterSet):
         return queryset.filter(event_timestamp__lte=parsed_value)
 
     def filter_participants(self, queryset, name, value):
-        contact_ids = [
-            contact_id.strip()
-            for contact_id in value.split(',')
-            if contact_id.strip()
-        ]
+        contact_id_field = EventParticipant._meta.get_field('contact').target_field
+        contact_ids = []
+        for raw_contact_id in value.split(','):
+            raw_contact_id = raw_contact_id.strip()
+            if not raw_contact_id:
+                continue
+            try:
+                contact_id = contact_id_field.clean(raw_contact_id, None)
+            except (DjangoValidationError, TypeError, ValueError):
+                raise APIValidationError({
+                    name: [PARTICIPANT_ID_FILTER_ERROR],
+                }) from None
+            if contact_id <= 0:
+                raise APIValidationError({
+                    name: [PARTICIPANT_ID_FILTER_ERROR],
+                })
+            contact_ids.append(contact_id)
         if not contact_ids:
             return queryset
-        return queryset.filter(participants__contact_id__in=contact_ids).distinct()
+        return queryset.filter(
+            participants__contact_id__in=contact_ids,
+            participants__contact__user=self.request.user,
+            participants__contact__is_active=True,
+        ).distinct()
 
     def filter_journaled(self, queryset, name, value):
         queryset = queryset.annotate(

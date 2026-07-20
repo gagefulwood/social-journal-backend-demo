@@ -26,12 +26,6 @@ SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -144,6 +138,169 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = config('MEDIA_URL', default='/media/')
 MEDIA_ROOT = BASE_DIR / 'mediafiles'
+
+
+def _csv_setting(name, default):
+    return tuple(
+        value.strip().lower()
+        for value in config(name, default=default).split(',')
+        if value.strip()
+    )
+
+
+MEDIA_ALLOWED_IMAGE_MIME_TYPES = _csv_setting(
+    'MEDIA_ALLOWED_IMAGE_MIME_TYPES',
+    'image/jpeg,image/png,image/webp',
+)
+MEDIA_ALLOWED_VIDEO_MIME_TYPES = _csv_setting(
+    'MEDIA_ALLOWED_VIDEO_MIME_TYPES',
+    'video/mp4,video/quicktime,video/webm',
+)
+MEDIA_ALLOWED_AUDIO_MIME_TYPES = _csv_setting(
+    'MEDIA_ALLOWED_AUDIO_MIME_TYPES',
+    'audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav',
+)
+MEDIA_IMAGE_MAX_BYTES = config(
+    'MEDIA_IMAGE_MAX_BYTES',
+    default=20 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_VIDEO_MAX_BYTES = config(
+    'MEDIA_VIDEO_MAX_BYTES',
+    default=250 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_UPLOAD_REQUEST_MAX_BYTES = config(
+    'MEDIA_UPLOAD_REQUEST_MAX_BYTES',
+    default=251 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_AUDIO_MAX_BYTES = config(
+    'MEDIA_AUDIO_MAX_BYTES',
+    default=50 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_IMAGE_MAX_PIXELS = config(
+    'MEDIA_IMAGE_MAX_PIXELS',
+    default=40_000_000,
+    cast=int,
+)
+MEDIA_IMAGE_MAX_EDGE = config(
+    'MEDIA_IMAGE_MAX_EDGE',
+    default=12_000,
+    cast=int,
+)
+MEDIA_CHAPTER_MAX_ASSETS = config(
+    'MEDIA_CHAPTER_MAX_ASSETS',
+    default=12,
+    cast=int,
+)
+MEDIA_EVENT_MAX_ASSETS = config(
+    'MEDIA_EVENT_MAX_ASSETS',
+    default=40,
+    cast=int,
+)
+MEDIA_CHAPTER_ORIGINAL_BYTES_MAX = config(
+    'MEDIA_CHAPTER_ORIGINAL_BYTES_MAX',
+    default=750 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_EVENT_ORIGINAL_BYTES_MAX = config(
+    'MEDIA_EVENT_ORIGINAL_BYTES_MAX',
+    default=2 * 1024 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_OWNER_STORAGE_QUOTA_BYTES = config(
+    'MEDIA_OWNER_STORAGE_QUOTA_BYTES',
+    default=10 * 1024 * 1024 * 1024,
+    cast=int,
+)
+# Zero leaves the generic owner asset count unlimited. Event/chapter association
+# limits are enforced by their owning domain services rather than this app.
+MEDIA_OWNER_MAX_ASSETS = config(
+    'MEDIA_OWNER_MAX_ASSETS',
+    default=0,
+    cast=int,
+)
+MEDIA_MAX_CONCURRENT_UPLOADS = config(
+    'MEDIA_MAX_CONCURRENT_UPLOADS',
+    default=3,
+    cast=int,
+)
+MEDIA_UPLOAD_SESSION_EXPIRY_SECONDS = config(
+    'MEDIA_UPLOAD_SESSION_EXPIRY_SECONDS',
+    default=2 * 60 * 60,
+    cast=int,
+)
+MEDIA_DELETED_ASSET_RETENTION_SECONDS = config(
+    'MEDIA_DELETED_ASSET_RETENTION_SECONDS',
+    default=24 * 60 * 60,
+    cast=int,
+)
+MEDIA_UNATTACHED_ASSET_RETENTION_SECONDS = config(
+    'MEDIA_UNATTACHED_ASSET_RETENTION_SECONDS',
+    default=7 * 24 * 60 * 60,
+    cast=int,
+)
+MEDIA_CONTAINER_PROBE_BYTES = config(
+    'MEDIA_CONTAINER_PROBE_BYTES',
+    default=8 * 1024 * 1024,
+    cast=int,
+)
+MEDIA_FFPROBE_BINARY = config('MEDIA_FFPROBE_BINARY', default='ffprobe')
+MEDIA_FFPROBE_TIMEOUT_SECONDS = config(
+    'MEDIA_FFPROBE_TIMEOUT_SECONDS',
+    default=30,
+    cast=int,
+)
+MEDIA_ALLOWED_VIDEO_CODECS = _csv_setting(
+    'MEDIA_ALLOWED_VIDEO_CODECS',
+    'h264,hevc,vp8,vp9,av1',
+)
+MEDIA_ALLOWED_AUDIO_CODECS = _csv_setting(
+    'MEDIA_ALLOWED_AUDIO_CODECS',
+    'aac,mp3,opus,vorbis,pcm_s16le,pcm_s24le,pcm_f32le',
+)
+MEDIA_VIDEO_MAX_DURATION_SECONDS = config(
+    'MEDIA_VIDEO_MAX_DURATION_SECONDS',
+    default=10 * 60,
+    cast=int,
+)
+MEDIA_AUDIO_MAX_DURATION_SECONDS = config(
+    'MEDIA_AUDIO_MAX_DURATION_SECONDS',
+    default=60 * 60,
+    cast=int,
+)
+MEDIA_VIDEO_MAX_WIDTH = config(
+    'MEDIA_VIDEO_MAX_WIDTH',
+    default=3840,
+    cast=int,
+)
+MEDIA_VIDEO_MAX_HEIGHT = config(
+    'MEDIA_VIDEO_MAX_HEIGHT',
+    default=2160,
+    cast=int,
+)
+MEDIA_CONTENT_CHUNK_SIZE = config(
+    'MEDIA_CONTENT_CHUNK_SIZE',
+    default=64 * 1024,
+    cast=int,
+)
+MEDIA_NONLOCAL_URL_MAX_EXPIRY_SECONDS = config(
+    'MEDIA_NONLOCAL_URL_MAX_EXPIRY_SECONDS',
+    default=15 * 60,
+    cast=int,
+)
+MEDIA_CONTENT_URL_EXPIRY_SECONDS = config(
+    'MEDIA_CONTENT_URL_EXPIRY_SECONDS',
+    default=2 * 60 * 60,
+    cast=int,
+)
+MEDIA_UPLOAD_SESSION_RETENTION_SECONDS = config(
+    'MEDIA_UPLOAD_SESSION_RETENTION_SECONDS',
+    default=7 * 24 * 60 * 60,
+    cast=int,
+)
 
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
