@@ -8,6 +8,8 @@ from .views import (
     EpisodeContextTagViewSet,
     InteractionDynamicViewSet,
     JournalFeedView,
+    JournalFilterOptionsView,
+    JournalHubSummaryView,
     LogPatternView,
     LogViewSet,
     ReflectionViewSet,
@@ -50,6 +52,16 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        'filter-options/',
+        JournalFilterOptionsView.as_view(),
+        name='journal-filter-options',
+    ),
+    path(
+        'summary/',
+        JournalHubSummaryView.as_view(),
+        name='journal-hub-summary',
+    ),
     path('', JournalFeedView.as_view(), name='journal-feed'),
     path('log-patterns/', LogPatternView.as_view(), name='journal-log-patterns'),
 ] + router.urls

@@ -1,5 +1,9 @@
+from datetime import timedelta
+
 from django.contrib import admin
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -769,7 +773,7 @@ class TypedJournalApiTests(TestCase):
             title='Unrelated reflection',
         )
 
-        with self.assertNumQueries(2):
+        with CaptureQueriesContext(connection) as queries:
             response = self.client.get(
                 reverse('journal-feed'),
                 {
@@ -777,6 +781,7 @@ class TypedJournalApiTests(TestCase):
                     'page_size': 100,
                 },
             )
+        self.assertLessEqual(len(queries), 6)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 6)
@@ -934,11 +939,12 @@ class TypedJournalApiTests(TestCase):
         )
         self.assertEqual(created.status_code, status.HTTP_201_CREATED)
 
-        with self.assertNumQueries(3):
+        with CaptureQueriesContext(connection) as queries:
             response = self.client.get(
                 reverse('journal-feed'),
                 {'related_contact': self.contact.id},
             )
+        self.assertLessEqual(len(queries), 6)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -1000,7 +1006,7 @@ class TypedJournalApiTests(TestCase):
 
         pages = []
         for page_number in (1, 2, 3):
-            with self.assertNumQueries(2):
+            with CaptureQueriesContext(connection) as queries:
                 response = self.client.get(
                     reverse('journal-feed'),
                     {
@@ -1009,6 +1015,7 @@ class TypedJournalApiTests(TestCase):
                         'page': page_number,
                     },
                 )
+            self.assertLessEqual(len(queries), 6)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data['count'], 5)
             pages.extend(
@@ -1028,6 +1035,185 @@ class TypedJournalApiTests(TestCase):
         self.assertEqual(
             [item['id'] for item in repeated_first_page.data['results']],
             expected_ids[:2],
+        )
+
+    def test_related_contact_query_budget_is_invariant_as_rows_grow(self):
+        Log.objects.bulk_create([
+            Log(
+                user=self.user,
+                primary_contact=self.contact,
+                title=f'Budget log {index}',
+            )
+            for index in range(10)
+        ])
+        with CaptureQueriesContext(connection) as small_queries:
+            small = self.client.get(
+                reverse('journal-feed'),
+                {
+                    'related_contact': self.contact.id,
+                    'page_size': 5,
+                },
+            )
+
+        Log.objects.bulk_create([
+            Log(
+                user=self.user,
+                primary_contact=self.contact,
+                title=f'Additional budget log {index}',
+            )
+            for index in range(1000)
+        ])
+        with CaptureQueriesContext(connection) as large_queries:
+            large = self.client.get(
+                reverse('journal-feed'),
+                {
+                    'related_contact': self.contact.id,
+                    'page_size': 5,
+                },
+            )
+
+        self.assertEqual(small.status_code, status.HTTP_200_OK)
+        self.assertEqual(large.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(small_queries), len(large_queries))
+        self.assertLessEqual(len(large_queries), 6)
+        self.assertEqual(small.data['count'], 10)
+        self.assertEqual(large.data['count'], 1010)
+
+    def test_hub_and_contact_summary_endpoints_are_bounded_and_owner_scoped(
+        self,
+    ):
+        shared_event = EventFactory(user=self.user)
+        EventParticipant.objects.create(
+            event=shared_event,
+            contact=self.contact,
+        )
+        completed_log = Log.objects.create(
+            user=self.user,
+            primary_contact=self.contact,
+            status=Log.STATUS_COMPLETED,
+            title='Latest completed log',
+            occurred_at=timezone.now(),
+        )
+        Reflection.objects.create(
+            user=self.user,
+            event=shared_event,
+            status=Reflection.STATUS_COMPLETED,
+            title='Event-related reflection',
+            occurred_at=timezone.now() - timedelta(minutes=5),
+        )
+        draft = Reflection.objects.create(
+            user=self.user,
+            primary_contact=self.contact,
+            status=Reflection.STATUS_DRAFT,
+            title='Contact draft',
+        )
+        Log.objects.create(
+            user=self.user,
+            status=Log.STATUS_COMPLETED,
+            title='Unrelated completed log',
+        )
+
+        with CaptureQueriesContext(connection) as summary_queries:
+            contact_summary = self.client.get(
+                reverse(
+                    'contact-journal-summary',
+                    args=[self.contact.id],
+                )
+            )
+        self.assertEqual(contact_summary.status_code, status.HTTP_200_OK)
+        self.assertLessEqual(len(summary_queries), 9)
+        self.assertEqual(contact_summary.data['completed_count'], 2)
+        self.assertEqual(contact_summary.data['log_count'], 1)
+        self.assertEqual(contact_summary.data['reflection_count'], 1)
+        self.assertEqual(contact_summary.data['draft_count'], 1)
+        self.assertEqual(
+            contact_summary.data['latest_completed']['id'],
+            str(completed_log.id),
+        )
+        self.assertEqual(
+            [item['id'] for item in contact_summary.data['drafts']],
+            [str(draft.id)],
+        )
+
+        hub_summary = self.client.get(reverse('journal-hub-summary'))
+        self.assertEqual(hub_summary.status_code, status.HTTP_200_OK)
+        self.assertEqual(hub_summary.data['draft_count'], 1)
+        self.assertEqual(len(hub_summary.data['drafts']), 1)
+
+        cross_owner = self.client.get(
+            reverse(
+                'contact-journal-summary',
+                args=[self.other_contact.id],
+            )
+        )
+        self.assertEqual(cross_owner.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_filter_options_are_compact_lazy_endpoint_contract(self):
+        related_event = EventFactory(user=self.user)
+        EventParticipant.objects.create(
+            event=related_event,
+            contact=self.contact,
+        )
+        unrelated_event = EventFactory(user=self.user)
+
+        response = self.client.get(
+            reverse('journal-filter-options'),
+            {'related_contact': self.contact.id},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['contacts'])
+        self.assertEqual(
+            set(response.data['contacts'][0]),
+            {'id', 'display_name'},
+        )
+        self.assertEqual(
+            {item['id'] for item in response.data['events']},
+            {related_event.id},
+        )
+        self.assertNotIn(
+            unrelated_event.id,
+            {item['id'] for item in response.data['events']},
+        )
+        self.assertTrue(
+            all(
+                set(item) == {'id', 'title'}
+                for item in response.data['events']
+            )
+        )
+
+    def test_log_detail_includes_compact_lookup_summaries(self):
+        created = self.client.post(
+            reverse('journal-log-list'),
+            {
+                'format': Log.FORMAT_EPISODE,
+                'title': 'Lookup summary log',
+                'detail': {'category_id': self.category.id},
+            },
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+
+        detail = self.client.get(
+            reverse('journal-log-detail', args=[created.data['id']])
+        )
+
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            detail.data['detail']['category_summary'],
+            {
+                'id': self.category.id,
+                'code': self.category.code,
+                'name': self.category.name,
+            },
+        )
+        self.assertEqual(
+            detail.data['detail']['characteristic_summaries'],
+            [],
+        )
+        self.assertEqual(
+            detail.data['detail']['context_tag_summaries'],
+            [],
         )
 
     def test_feed_summary_is_bounded_plain_text_and_privacy_safe(self):

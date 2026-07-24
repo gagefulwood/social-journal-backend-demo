@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework_nested import routers
 from .views import ContactViewSet, FactViewSet, ObservationViewSet
+from journals.views import ContactJournalSummaryView
 
 # Primary router — /api/contacts/
 router = routers.DefaultRouter()
@@ -12,6 +13,11 @@ contacts_router.register(r'facts', FactViewSet, basename='contact-facts')
 contacts_router.register(r'observations', ObservationViewSet, basename='contact-observations')
 
 urlpatterns = [
+    path(
+        'contacts/<int:contact_id>/journal-summary/',
+        ContactJournalSummaryView.as_view(),
+        name='contact-journal-summary',
+    ),
     path('', include(router.urls)),
     path('', include(contacts_router.urls)),
 ]

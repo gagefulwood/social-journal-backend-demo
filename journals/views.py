@@ -1,5 +1,8 @@
 from datetime import timedelta
+from types import SimpleNamespace
+from urllib.parse import urlencode
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import (
@@ -14,12 +17,16 @@ from django.db.models import (
     IntegerField,
     OuterRef,
     Q,
+    Subquery,
     Sum,
     TextField,
     UUIDField,
     Value,
     When,
 )
+from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import generics, status, viewsets
@@ -40,9 +47,9 @@ from lookups.models import (
     InteractionDynamic,
     SocialEnergyFactor,
 )
-from media.serializers import MediaAssetListSerializer
+from media.signing import sign_media_content
 
-from .models import Log, Reflection, ReflectionAttachment, ReflectionContact
+from .models import Log, Reflection, ReflectionContact
 from .serializers import (
     EmotionStateSerializer,
     EpisodeCategorySerializer,
@@ -50,6 +57,9 @@ from .serializers import (
     EpisodeContextTagSerializer,
     HubItemSerializer,
     InteractionDynamicSerializer,
+    ContactJournalSummarySerializer,
+    JournalHubSummarySerializer,
+    JournalFilterOptionsSerializer,
     LogPatternSerializer,
     LogSerializer,
     ReflectionSerializer,
@@ -77,6 +87,22 @@ SOCIAL_BEHAVIOR_SUMMARY_LABELS = {
     'more_social': 'became more social',
     'withdrew': 'withdrew',
 }
+
+
+class PrecountedQuerySequence:
+    """Let DRF paginate a queryset without recounting its UNION."""
+
+    ordered = True
+
+    def __init__(self, queryset, count):
+        self.queryset = queryset
+        self._count = count
+
+    def count(self):
+        return self._count
+
+    def __getitem__(self, key):
+        return self.queryset[key]
 
 
 class RevisionConflict(APIException):
@@ -238,9 +264,15 @@ class ReflectionViewSet(CanonicalJournalViewSet):
         )
 
     def _filter_contact(self, queryset, contact_id):
+        contact_link = Exists(
+            ReflectionContact.objects.filter(
+                reflection_id=OuterRef('pk'),
+                contact_id=contact_id,
+            )
+        )
         return queryset.filter(
-            Q(primary_contact_id=contact_id) | Q(contacts__id=contact_id)
-        ).distinct()
+            Q(primary_contact_id=contact_id) | Q(contact_link)
+        )
 
 
 class JournalLookupViewSet(viewsets.ModelViewSet):
@@ -326,7 +358,8 @@ class JournalFeedView(generics.GenericAPIView):
         'primary_contact_id',
         'primary_first_name',
         'primary_last_name',
-        'relation_source',
+        'relation_direct',
+        'relation_event',
         'occurred_at',
         'current_step',
         'revision',
@@ -335,32 +368,156 @@ class JournalFeedView(generics.GenericAPIView):
         'completed_at',
         'media_count',
         'cover_attachment_id',
+        'cover_asset_id',
+        'cover_asset_user_id',
+        'cover_media_type_name',
+        'cover_content_type',
+        'cover_alt_text',
+        'cover_is_sensitive',
+    ]
+    identity_columns = [
+        'id',
+        'family',
+        'occurred_at',
+        'updated_timestamp',
+        'created_timestamp',
     ]
 
     def get(self, request, *args, **kwargs):
-        queryset = self._combined_queryset(request)
-        page = self.paginate_queryset(queryset)
+        params = request.query_params
+        (
+            families,
+            ordering,
+            logs,
+            reflections,
+            related_contact_id,
+            related_contact_visible,
+        ) = self._prepare_query(
+            request.user,
+            params,
+        )
+        if related_contact_id is not None and not related_contact_visible:
+            total_count = 0
+        else:
+            counts = self._count_querysets(
+                request.user,
+                logs,
+                reflections,
+                families,
+            )
+            total_count = counts['log'] + counts['reflection']
+        queryset = self._identity_queryset(
+            logs,
+            reflections,
+            families,
+            ordering,
+        )
+        page = self.paginate_queryset(
+            PrecountedQuerySequence(queryset, total_count)
+        )
         rows = page if page is not None else list(queryset)
-        items = self._hydrate_rows(rows)
+        items = self._hydrate_rows(rows, related_contact_id)
         serializer = self.get_serializer(items, many=True)
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
-    def _combined_queryset(self, request):
-        families = self._families(request)
-        logs = Log.objects.for_user(request.user)
-        reflections = Reflection.objects.for_user(request.user)
-        logs, reflections = self._filter_querysets(request, logs, reflections)
+    def _prepare_query(
+        self,
+        user,
+        params,
+        *,
+        validated_related_contact_id=None,
+    ):
+        families = self._families(params)
+        ordering = self._ordering(params)
+        logs = Log.objects.for_user(user)
+        reflections = Reflection.objects.for_user(user)
+        (
+            logs,
+            reflections,
+            related_contact_id,
+            related_contact_visible,
+        ) = self._filter_querysets(
+            user,
+            params,
+            logs,
+            reflections,
+            validated_related_contact_id=validated_related_contact_id,
+        )
+        return (
+            families,
+            ordering,
+            logs,
+            reflections,
+            related_contact_id,
+            related_contact_visible,
+        )
+
+    def _feed_slice(
+        self,
+        user,
+        params,
+        *,
+        limit,
+        validated_related_contact_id=None,
+    ):
+        (
+            families,
+            ordering,
+            logs,
+            reflections,
+            related_contact_id,
+            related_contact_visible,
+        ) = self._prepare_query(
+            user,
+            params,
+            validated_related_contact_id=validated_related_contact_id,
+        )
+        if related_contact_id is not None and not related_contact_visible:
+            return {'log': 0, 'reflection': 0}, []
+        counts = self._count_querysets(
+            user,
+            logs,
+            reflections,
+            families,
+        )
+        identities = list(
+            self._identity_queryset(
+                logs,
+                reflections,
+                families,
+                ordering,
+            )[:limit]
+        )
+        return counts, self._hydrate_rows(
+            identities,
+            related_contact_id,
+        )
+
+    def _identity_queryset(self, logs, reflections, families, ordering):
         querysets = []
         if 'log' in families:
-            querysets.append(self._log_values(logs))
+            querysets.append(self._identity_values(logs, 'log'))
         if 'reflection' in families:
-            querysets.append(self._reflection_values(reflections))
+            querysets.append(self._identity_values(reflections, 'reflection'))
         queryset = querysets[0]
         if len(querysets) == 2:
             queryset = queryset.union(querysets[1], all=True)
-        ordering = request.query_params.get('ordering', '-updated_timestamp')
+        return queryset.order_by(
+            ordering,
+            '-created_timestamp',
+            '-id',
+            'family',
+        )
+
+    def _identity_values(self, queryset, family):
+        return queryset.order_by().annotate(
+            family=Value(family, output_field=CharField()),
+        ).values(*self.identity_columns)
+
+    def _ordering(self, params):
+        ordering = params.get('ordering', '-updated_timestamp')
         allowed_ordering = {
             'updated_timestamp',
             '-updated_timestamp',
@@ -374,15 +531,10 @@ class JournalFeedView(generics.GenericAPIView):
                     'occurred_at, or -occurred_at.'
                 )
             })
-        return queryset.order_by(
-            ordering,
-            '-created_timestamp',
-            '-id',
-            'family',
-        )
+        return ordering
 
-    def _families(self, request):
-        raw = request.query_params.get('family')
+    def _families(self, params):
+        raw = params.get('family')
         if not raw:
             return {'log', 'reflection'}
         families = {value.strip() for value in raw.split(',') if value.strip()}
@@ -392,15 +544,23 @@ class JournalFeedView(generics.GenericAPIView):
             })
         return families
 
-    def _filter_querysets(self, request, logs, reflections):
-        status_value = request.query_params.get('status')
-        format_value = request.query_params.get('format')
-        search = request.query_params.get('search')
-        event_id = request.query_params.get('event')
-        chapter_value = request.query_params.get('chapter')
-        contact_id = request.query_params.get('contact')
+    def _filter_querysets(
+        self,
+        user,
+        params,
+        logs,
+        reflections,
+        *,
+        validated_related_contact_id=None,
+    ):
+        status_value = params.get('status')
+        format_value = params.get('format')
+        search = params.get('search')
+        event_id = params.get('event')
+        chapter_value = params.get('chapter')
+        contact_id = params.get('contact')
         related_contact_id = self._positive_integer_param(
-            request,
+            params,
             'related_contact',
         )
         if contact_id and related_contact_id is not None:
@@ -409,8 +569,8 @@ class JournalFeedView(generics.GenericAPIView):
                     'Use contact or related_contact, not both.'
                 )
             })
-        occurred_after = self._datetime_param(request, 'occurred_after')
-        occurred_before = self._datetime_param(request, 'occurred_before')
+        occurred_after = self._datetime_param(params, 'occurred_after')
+        occurred_before = self._datetime_param(params, 'occurred_before')
         if status_value:
             logs = logs.filter(status=status_value)
             reflections = reflections.filter(status=status_value)
@@ -434,7 +594,7 @@ class JournalFeedView(generics.GenericAPIView):
                 })
             if not Event.objects.filter(
                 pk=event_id,
-                user=request.user,
+                user=user,
             ).exists():
                 raise ValidationError({
                     'event': 'Select an Event owned by the requesting user.'
@@ -447,7 +607,7 @@ class JournalFeedView(generics.GenericAPIView):
                     chapter = EventChapter.objects.get(
                         pk=chapter_value,
                         event_id=event_id,
-                        event__user=request.user,
+                        event__user=user,
                     )
                 except (
                     EventChapter.DoesNotExist,
@@ -465,105 +625,124 @@ class JournalFeedView(generics.GenericAPIView):
                 reflections = reflections.filter(chapter=chapter)
         if contact_id:
             logs = logs.filter(primary_contact_id=contact_id)
+            contact_link = Exists(
+                ReflectionContact.objects.filter(
+                    reflection_id=OuterRef('pk'),
+                    contact_id=contact_id,
+                )
+            )
             reflections = reflections.filter(
-                Q(primary_contact_id=contact_id) | Q(contacts__id=contact_id)
-            ).distinct()
+                Q(primary_contact_id=contact_id) | Q(contact_link)
+            )
+        related_contact_visible = True
         if related_contact_id is not None:
-            logs = self._with_related_contact_matches(
-                logs,
-                request.user,
-                related_contact_id,
-                reflection=False,
+            related_contact_visible = (
+                related_contact_id == validated_related_contact_id
+                or Contact.objects.for_user(user).filter(
+                    pk=related_contact_id,
+                ).exists()
             )
-            reflections = self._with_related_contact_matches(
-                reflections,
-                request.user,
-                related_contact_id,
-                reflection=True,
-            )
-        else:
-            logs = logs.annotate(
-                relation_source=Value(
-                    None,
-                    output_field=CharField(max_length=6),
-                ),
-            )
-            reflections = reflections.annotate(
-                relation_source=Value(
-                    None,
-                    output_field=CharField(max_length=6),
-                ),
-            )
+            if related_contact_visible:
+                logs, reflections = self._with_related_contact_matches(
+                    logs,
+                    reflections,
+                    user,
+                    related_contact_id,
+                )
+            else:
+                logs = logs.none()
+                reflections = reflections.none()
         if occurred_after:
             logs = logs.filter(occurred_at__gte=occurred_after)
             reflections = reflections.filter(occurred_at__gte=occurred_after)
         if occurred_before:
             logs = logs.filter(occurred_at__lte=occurred_before)
             reflections = reflections.filter(occurred_at__lte=occurred_before)
-        return logs, reflections
+        return (
+            logs,
+            reflections,
+            related_contact_id,
+            related_contact_visible,
+        )
 
     def _with_related_contact_matches(
         self,
-        queryset,
+        logs,
+        reflections,
         user,
         contact_id,
-        *,
-        reflection,
     ):
-        direct_matches = [
-            When(primary_contact_id=contact_id, then=Value(True)),
-        ]
-        if reflection:
-            direct_matches.append(
-                When(
-                    Exists(
-                        ReflectionContact.objects.filter(
-                            reflection_id=OuterRef('pk'),
-                            contact_id=contact_id,
-                        )
-                    ),
-                    then=Value(True),
-                ),
-            )
-        return queryset.alias(
-            _related_contact_visible=Exists(
-                Contact.objects.for_user(user).filter(pk=contact_id)
-            ),
-            _direct_contact_match=Case(
-                *direct_matches,
-                default=Value(False),
-                output_field=BooleanField(),
-            ),
-            _event_contact_match=Exists(
-                EventParticipant.objects.filter(
-                    event_id=OuterRef('event_id'),
-                    event__user=user,
-                    contact_id=contact_id,
-                )
-            ),
-        ).filter(
-            _related_contact_visible=True,
-        ).filter(
-            Q(_direct_contact_match=True) | Q(_event_contact_match=True)
-        ).annotate(
-            relation_source=Case(
-                When(
-                    _direct_contact_match=True,
-                    _event_contact_match=True,
-                    then=Value('both'),
-                ),
-                When(
-                    _direct_contact_match=True,
-                    then=Value('direct'),
-                ),
-                When(
-                    _event_contact_match=True,
-                    then=Value('event'),
-                ),
-                default=Value(None),
-                output_field=CharField(max_length=6),
-            ),
+        related_event_ids = EventParticipant.objects.filter(
+            event__user=user,
+            contact_id=contact_id,
+        ).values('event_id')
+        logs = logs.filter(
+            Q(primary_contact_id=contact_id)
+            | Q(event_id__in=Subquery(related_event_ids))
         )
+        contact_link = Exists(
+            ReflectionContact.objects.filter(
+                reflection_id=OuterRef('pk'),
+                contact_id=contact_id,
+            )
+        )
+        reflections = reflections.filter(
+            Q(primary_contact_id=contact_id)
+            | Q(contact_link)
+            | Q(event_id__in=Subquery(related_event_ids))
+        )
+        return logs, reflections
+
+    def _count_querysets(
+        self,
+        user,
+        logs,
+        reflections,
+        families,
+    ):
+        def count_subquery(queryset):
+            return (
+                queryset.order_by()
+                .values('user_id')
+                .annotate(total=Count('pk'))
+                .values('total')[:1]
+            )
+
+        annotations = {
+            'log_total': (
+                Coalesce(
+                    Subquery(
+                        count_subquery(logs),
+                        output_field=IntegerField(),
+                    ),
+                    Value(0),
+                )
+                if 'log' in families
+                else Value(0, output_field=IntegerField())
+            ),
+            'reflection_total': (
+                Coalesce(
+                    Subquery(
+                        count_subquery(reflections),
+                        output_field=IntegerField(),
+                    ),
+                    Value(0),
+                )
+                if 'reflection' in families
+                else Value(0, output_field=IntegerField())
+            ),
+        }
+        totals = (
+            get_user_model()
+            .objects.filter(pk=user.pk)
+            .annotate(**annotations)
+            .values('log_total', 'reflection_total')
+            .get()
+        )
+        return {
+            'log': totals['log_total'],
+            'reflection': totals['reflection_total'],
+        }
 
     def _log_search_query(self, value):
         social_fields = (
@@ -636,8 +815,8 @@ class JournalFeedView(generics.GenericAPIView):
             if normalized in label.casefold()
         ]
 
-    def _datetime_param(self, request, name):
-        value = request.query_params.get(name)
+    def _datetime_param(self, params, name):
+        value = params.get(name)
         if not value:
             return None
         parsed = parse_datetime(value)
@@ -645,8 +824,8 @@ class JournalFeedView(generics.GenericAPIView):
             raise ValidationError({name: 'Enter a valid ISO 8601 timestamp.'})
         return parsed
 
-    def _positive_integer_param(self, request, name):
-        value = request.query_params.get(name)
+    def _positive_integer_param(self, params, name):
+        value = params.get(name)
         if not value:
             return None
         try:
@@ -670,10 +849,56 @@ class JournalFeedView(generics.GenericAPIView):
             'primary_last_name': F('primary_contact__last_name'),
         }
 
-    def _log_values(self, queryset):
+    def _relation_annotations(self, contact_id, *, reflection):
+        if contact_id is None:
+            return {
+                'relation_direct': Value(
+                    False,
+                    output_field=BooleanField(),
+                ),
+                'relation_event': Value(
+                    False,
+                    output_field=BooleanField(),
+                ),
+            }
+        direct_matches = [
+            When(primary_contact_id=contact_id, then=Value(True)),
+        ]
+        if reflection:
+            direct_matches.append(
+                When(
+                    Exists(
+                        ReflectionContact.objects.filter(
+                            reflection_id=OuterRef('pk'),
+                            contact_id=contact_id,
+                        )
+                    ),
+                    then=Value(True),
+                ),
+            )
+        return {
+            'relation_direct': Case(
+                *direct_matches,
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+            'relation_event': Exists(
+                EventParticipant.objects.filter(
+                    event_id=OuterRef('event_id'),
+                    event__user=self.request.user,
+                    contact_id=contact_id,
+                )
+            ),
+        }
+
+    def _log_values(self, queryset, related_contact_id):
         return (
             queryset.annotate(
                 **self._common_annotations('log'),
+                **self._relation_annotations(
+                    related_contact_id,
+                    reflection=False,
+                ),
                 summary_primary=Case(
                     When(
                         format=Log.FORMAT_EPISODE,
@@ -712,14 +937,33 @@ class JournalFeedView(generics.GenericAPIView):
                 ),
                 media_count=Value(0, output_field=IntegerField()),
                 cover_attachment_id=Value(None, output_field=UUIDField()),
+                cover_asset_id=Value(None, output_field=IntegerField()),
+                cover_asset_user_id=Value(
+                    None,
+                    output_field=IntegerField(),
+                ),
+                cover_media_type_name=Value(
+                    None,
+                    output_field=CharField(),
+                ),
+                cover_content_type=Value('', output_field=CharField()),
+                cover_alt_text=Value('', output_field=TextField()),
+                cover_is_sensitive=Value(
+                    False,
+                    output_field=BooleanField(),
+                ),
             )
             .values(*self.columns)
         )
 
-    def _reflection_values(self, queryset):
+    def _reflection_values(self, queryset, related_contact_id):
         return (
             queryset.annotate(
                 **self._common_annotations('reflection'),
+                **self._relation_annotations(
+                    related_contact_id,
+                    reflection=True,
+                ),
                 summary_primary=Case(
                     When(
                         format=Reflection.FORMAT_INTERACTION,
@@ -739,27 +983,55 @@ class JournalFeedView(generics.GenericAPIView):
                 summary_secondary=Value('', output_field=TextField()),
                 summary_tertiary=Value('', output_field=TextField()),
                 media_count=Count('attachments', distinct=True),
+                cover_asset_id=F('cover_attachment__media_asset_id'),
+                cover_asset_user_id=F(
+                    'cover_attachment__media_asset__user_id'
+                ),
+                cover_media_type_name=F(
+                    'cover_attachment__media_asset__media_type__name'
+                ),
+                cover_content_type=F(
+                    'cover_attachment__media_asset__content_type'
+                ),
+                cover_alt_text=F(
+                    'cover_attachment__media_asset__alt_text'
+                ),
+                cover_is_sensitive=F('cover_attachment__is_sensitive'),
             )
             .values(*self.columns)
         )
 
-    def _hydrate_rows(self, rows):
-        cover_ids = [
-            row['cover_attachment_id']
-            for row in rows
-            if row['cover_attachment_id']
+    def _hydrate_rows(self, rows, related_contact_id):
+        identities = list(rows)
+        log_ids = [
+            row['id'] for row in identities if row['family'] == 'log'
         ]
-        covers = {
-            attachment.id: attachment
-            for attachment in ReflectionAttachment.objects.filter(
-                id__in=cover_ids,
-                is_sensitive=False,
-                media_asset__content_type__istartswith='image/',
-            ).select_related('media_asset__media_type')
-        }
-        return [self._hub_item(row, covers) for row in rows]
+        reflection_ids = [
+            row['id'] for row in identities if row['family'] == 'reflection'
+        ]
+        hydrated = {}
+        if log_ids:
+            queryset = Log.objects.for_user(self.request.user).filter(
+                pk__in=log_ids
+            )
+            for row in self._log_values(queryset, related_contact_id):
+                hydrated[('log', row['id'])] = row
+        if reflection_ids:
+            queryset = Reflection.objects.for_user(self.request.user).filter(
+                pk__in=reflection_ids
+            )
+            for row in self._reflection_values(
+                queryset,
+                related_contact_id,
+            ):
+                hydrated[('reflection', row['id'])] = row
+        return [
+            self._hub_item(hydrated[(row['family'], row['id'])])
+            for row in identities
+            if (row['family'], row['id']) in hydrated
+        ]
 
-    def _hub_item(self, row, covers):
+    def _hub_item(self, row):
         event = None
         if row['event_id']:
             event = {
@@ -798,9 +1070,7 @@ class JournalFeedView(generics.GenericAPIView):
             completed_steps = steps.index(row['current_step'])
         else:
             completed_steps = 0
-        cover = self._cover_summary(
-            covers.get(row['cover_attachment_id'])
-        )
+        cover = self._cover_summary(row)
         return {
             'id': row['id'],
             'family': row['family'],
@@ -811,7 +1081,7 @@ class JournalFeedView(generics.GenericAPIView):
             'event': event,
             'chapter': chapter,
             'primary_contact': primary_contact,
-            'relation_source': row['relation_source'],
+            'relation_source': self._relation_source(row),
             'occurred_at': row['occurred_at'],
             'current_step': row['current_step'],
             'progress': {
@@ -870,27 +1140,164 @@ class JournalFeedView(generics.GenericAPIView):
             return summary
         return f'{summary[:159].rstrip()}…'
 
-    def _cover_summary(self, attachment):
+    def _relation_source(self, row):
+        if row['relation_direct'] and row['relation_event']:
+            return 'both'
+        if row['relation_direct']:
+            return 'direct'
+        if row['relation_event']:
+            return 'event'
+        return None
+
+    def _cover_summary(self, row):
         if (
-            attachment is None
-            or attachment.is_sensitive
-            or not attachment.media_asset.content_type.lower().startswith(
-                'image/'
-            )
+            not row['cover_attachment_id']
+            or not row['cover_asset_id']
+            or row['cover_is_sensitive']
+            or row['cover_asset_user_id'] != self.request.user.pk
+            or not (row['cover_content_type'] or '').lower().startswith('image/')
         ):
             return None
-        media = attachment.media_asset
-        media_representation = MediaAssetListSerializer(
-            media,
-            context=self.get_serializer_context(),
-        ).data
+        asset = SimpleNamespace(
+            pk=row['cover_asset_id'],
+            user_id=row['cover_asset_user_id'],
+        )
+        path = reverse('media-content', args=[row['cover_asset_id']])
+        path = f'{path}?{urlencode({"token": sign_media_content(asset)})}'
         return {
-            'attachment_id': attachment.id,
-            'media_asset_id': media.id,
-            'media_type': media.media_type.name if media.media_type else None,
-            'file_url': media_representation['content_url'],
-            'alt_text': media.alt_text,
+            'attachment_id': row['cover_attachment_id'],
+            'media_asset_id': row['cover_asset_id'],
+            'media_type': row['cover_media_type_name'],
+            'file_url': self.request.build_absolute_uri(path),
+            'alt_text': row['cover_alt_text'],
         }
+
+
+class JournalHubSummaryView(JournalFeedView):
+    serializer_class = JournalHubSummarySerializer
+
+    def get(self, request, *args, **kwargs):
+        counts, drafts = self._feed_slice(
+            request.user,
+            {
+                'status': Log.STATUS_DRAFT,
+                'ordering': '-updated_timestamp',
+            },
+            limit=10,
+        )
+        payload = {
+            'draft_count': counts['log'] + counts['reflection'],
+            'drafts': drafts,
+        }
+        return Response(self.get_serializer(payload).data)
+
+
+class ContactJournalSummaryView(JournalFeedView):
+    serializer_class = ContactJournalSummarySerializer
+
+    def get(self, request, contact_id, *args, **kwargs):
+        contact = get_object_or_404(
+            Contact.objects.for_user(request.user),
+            pk=contact_id,
+        )
+        completed_counts, completed = self._feed_slice(
+            request.user,
+            {
+                'related_contact': contact.id,
+                'status': Log.STATUS_COMPLETED,
+                'ordering': '-occurred_at',
+            },
+            limit=1,
+            validated_related_contact_id=contact.id,
+        )
+        draft_counts, drafts = self._feed_slice(
+            request.user,
+            {
+                'related_contact': contact.id,
+                'status': Log.STATUS_DRAFT,
+                'ordering': '-updated_timestamp',
+            },
+            limit=2,
+            validated_related_contact_id=contact.id,
+        )
+        payload = {
+            'completed_count': (
+                completed_counts['log'] + completed_counts['reflection']
+            ),
+            'log_count': completed_counts['log'],
+            'reflection_count': completed_counts['reflection'],
+            'draft_count': draft_counts['log'] + draft_counts['reflection'],
+            'latest_completed': completed[0] if completed else None,
+            'drafts': drafts,
+        }
+        return Response(self.get_serializer(payload).data)
+
+
+class JournalFilterOptionsView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = JournalFilterOptionsSerializer
+    http_method_names = ['get', 'head', 'options']
+
+    def get(self, request, *args, **kwargs):
+        limit = self._limit(request)
+        contact_search = request.query_params.get('contact_search', '').strip()
+        event_search = request.query_params.get('event_search', '').strip()
+        related_contact_id = request.query_params.get('related_contact')
+
+        contacts = Contact.objects.for_user(request.user)
+        if contact_search:
+            contacts = contacts.filter(
+                Q(first_name__icontains=contact_search)
+                | Q(last_name__icontains=contact_search)
+                | Q(preferred_name__icontains=contact_search)
+            )
+        contacts = contacts.order_by('first_name', 'last_name', 'id')[:limit]
+
+        events = Event.objects.filter(user=request.user)
+        if related_contact_id:
+            try:
+                related_contact_id = int(related_contact_id)
+            except (TypeError, ValueError):
+                raise ValidationError({
+                    'related_contact': 'Enter a valid positive integer.'
+                }) from None
+            if related_contact_id <= 0:
+                raise ValidationError({
+                    'related_contact': 'Enter a valid positive integer.'
+                })
+            contact = get_object_or_404(
+                Contact.objects.for_user(request.user),
+                pk=related_contact_id,
+            )
+            events = events.filter(participants__contact=contact).distinct()
+        if event_search:
+            events = events.filter(title__icontains=event_search)
+        events = events.order_by('-event_timestamp', '-id')[:limit]
+
+        payload = {
+            'contacts': [
+                {'id': contact.id, 'display_name': str(contact)}
+                for contact in contacts
+            ],
+            'events': [
+                {'id': event.id, 'title': event.title}
+                for event in events
+            ],
+        }
+        return Response(self.get_serializer(payload).data)
+
+    def _limit(self, request):
+        try:
+            limit = int(request.query_params.get('limit', 100))
+        except (TypeError, ValueError):
+            raise ValidationError({
+                'limit': 'Enter a whole number from 1 through 100.'
+            }) from None
+        if limit < 1 or limit > 100:
+            raise ValidationError({
+                'limit': 'Enter a whole number from 1 through 100.'
+            })
+        return limit
 
 
 class LogPatternView(generics.GenericAPIView):

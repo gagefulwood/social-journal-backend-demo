@@ -88,6 +88,20 @@ def _chapter_summary(chapter):
     }
 
 
+def _lookup_summary(lookup):
+    if lookup is None:
+        return None
+    return {
+        'id': lookup.id,
+        'code': lookup.code,
+        'name': lookup.name,
+    }
+
+
+def _lookup_summaries(queryset):
+    return [_lookup_summary(lookup) for lookup in queryset]
+
+
 class VisibleDetailSerializer(serializers.ModelSerializer):
     visible_fields = {}
 
@@ -531,11 +545,16 @@ class CanonicalJournalSerializer(serializers.ModelSerializer):
         relation = self.detail_relations.get(obj.format)
         serializer_class = self.detail_serializers.get(obj.format)
         detail = getattr(obj, relation, None) if relation else None
-        return (
+        if not detail or not serializer_class:
+            return {}
+        representation = dict(
             serializer_class(detail, context=self.context).data
-            if detail and serializer_class
-            else {}
         )
+        representation.update(self._detail_lookup_representation(obj, detail))
+        return representation
+
+    def _detail_lookup_representation(self, obj, detail):
+        return {}
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -547,6 +566,29 @@ class LogSerializer(CanonicalJournalSerializer):
     family_name = 'log'
     detail_serializers = LOG_DETAIL_SERIALIZERS
     detail_relations = LOG_DETAIL_RELATIONS
+
+    def _detail_lookup_representation(self, obj, detail):
+        if obj.format == Log.FORMAT_EPISODE:
+            return {
+                'category_summary': _lookup_summary(detail.category),
+                'characteristic_summaries': _lookup_summaries(
+                    detail.characteristics.all()
+                ),
+                'context_tag_summaries': _lookup_summaries(
+                    detail.context_tags.all()
+                ),
+            }
+        if obj.format == Log.FORMAT_SOCIAL_ENERGY:
+            return {
+                'factor_summaries': _lookup_summaries(detail.factors.all()),
+            }
+        if obj.format == Log.FORMAT_SENTIMENT:
+            return {
+                'before_state_summary': _lookup_summary(detail.before_state),
+                'after_state_summary': _lookup_summary(detail.after_state),
+                'dynamic_summaries': _lookup_summaries(detail.dynamics.all()),
+            }
+        return {}
 
     class Meta:
         model = Log
@@ -646,6 +688,15 @@ class ReflectionSerializer(CanonicalJournalSerializer):
     carry_forward = serializers.JSONField(write_only=True, required=False)
     contacts = serializers.SerializerMethodField()
     cover_attachment_id = serializers.UUIDField(read_only=True)
+
+    def _detail_lookup_representation(self, obj, detail):
+        if obj.format == Reflection.FORMAT_EMOTIONAL:
+            return {
+                'emotion_summaries': _lookup_summaries(
+                    detail.emotions.all()
+                ),
+            }
+        return {}
 
     class Meta:
         model = Reflection
@@ -1232,6 +1283,35 @@ class HubItemSerializer(serializers.Serializer):
     completed_at = serializers.DateTimeField(allow_null=True)
     media_count = serializers.IntegerField()
     cover = serializers.JSONField(allow_null=True)
+
+
+class JournalHubSummarySerializer(serializers.Serializer):
+    draft_count = serializers.IntegerField(min_value=0)
+    drafts = HubItemSerializer(many=True)
+
+
+class ContactJournalSummarySerializer(serializers.Serializer):
+    completed_count = serializers.IntegerField(min_value=0)
+    log_count = serializers.IntegerField(min_value=0)
+    reflection_count = serializers.IntegerField(min_value=0)
+    draft_count = serializers.IntegerField(min_value=0)
+    latest_completed = HubItemSerializer(allow_null=True)
+    drafts = HubItemSerializer(many=True)
+
+
+class JournalContactFilterOptionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    display_name = serializers.CharField()
+
+
+class JournalEventFilterOptionSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+
+
+class JournalFilterOptionsSerializer(serializers.Serializer):
+    contacts = JournalContactFilterOptionSerializer(many=True)
+    events = JournalEventFilterOptionSerializer(many=True)
 
 
 class LogPatternSerializer(serializers.Serializer):
