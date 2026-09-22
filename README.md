@@ -1,4 +1,10 @@
-# Social Journal - Backend
+# Social Journal - Backend Demo
+
+Public portfolio demo source for Social Journal. This repository preserves the
+project's development history and provides a snapshot for review and local setup.
+It is proprietary software; all rights are reserved to Gage Fulwood.
+
+Frontend demo: [social-journal-frontend-demo](https://github.com/gagefulwood/social-journal-frontend-demo).
 
 Django REST Framework API for the private Social Journal relationship journal.
 
@@ -18,8 +24,8 @@ Make sure you have the following installed on your machine before starting:
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/gagefulwood/social-journal-backend.git
-cd social-journal-backend
+git clone https://github.com/gagefulwood/social-journal-backend-demo.git
+cd social-journal-backend-demo
 ```
 
 ### 2. Create and activate a virtual environment
