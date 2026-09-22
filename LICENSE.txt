@@ -1,6 +1,17 @@
-Copyright (c) 2026 Gage Fulwood, Andra Dusin. All Rights Reserved.
+Copyright (c) 2026 Gage Fulwood. All rights reserved.
 
-This software and its source code are proprietary and confidential.
-Unauthorized copying, modification, distribution, or use of this software,
-in whole or in part, without the express written permission of the authors
-is strictly prohibited.
+This project is proprietary. Its source code is made publicly available for
+portfolio review. No license is granted to use, modify, reproduce, distribute,
+sublicense, or sell this software or create derivative works without prior
+written permission from Gage Fulwood, except as permitted by applicable law
+or GitHub's Terms of Service, including viewing and forking through GitHub.
+
+Third-party dependencies, assets, and other third-party materials remain subject
+to their respective licenses and copyright notices. This notice does not claim
+ownership of those materials or replace their licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NONINFRINGEMENT. TO THE EXTENT PERMITTED BY LAW, THE COPYRIGHT
+HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING
+FROM THE SOFTWARE OR ITS USE.

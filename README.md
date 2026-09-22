@@ -203,3 +203,11 @@ the resource's normal list order. Observation lists continue to exclude archived
 records unless `status=archived` or the compatibility `is_active` filter requests
 them. All routes are authenticated and scoped through the active Contact owner;
 another user's identifier is returned as not found.
+
+## License
+
+Copyright (c) 2026 Gage Fulwood. All rights reserved.
+
+This is proprietary software published for portfolio review, not an open-source
+project. See [LICENSE.txt](LICENSE.txt) for permissions and restrictions.
+Third-party materials retain their own licenses.
